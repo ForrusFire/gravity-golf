@@ -142,6 +142,79 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Screen space, after the world transform is popped.
+    this.drawOffscreenMarker(ctx, scene, options.palette);
+  }
+
+  /**
+   * An edge arrow pointing at the hole when it is off-screen.
+   *
+   * On a narrow screen the camera cannot show a whole hole at a legible scale,
+   * so without this the player is aiming at a target they cannot see.
+   */
+  private drawOffscreenMarker(
+    ctx: CanvasRenderingContext2D,
+    scene: Scene,
+    palette: Palette,
+  ): void {
+    const hole = scene.world.hole.position;
+    const screen = this.camera.worldToScreen(hole);
+    const margin = 46;
+    const onScreen =
+      screen.x >= margin &&
+      screen.x <= this.width - margin &&
+      screen.y >= margin &&
+      screen.y <= this.height - margin;
+    if (onScreen) return;
+
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const dir = V.normalize({ x: screen.x - cx, y: screen.y - cy });
+    if (dir.x === 0 && dir.y === 0) return;
+
+    // Walk from the centre to the first viewport edge the direction crosses.
+    const halfW = cx - margin;
+    const halfH = cy - margin;
+    const scale = Math.min(
+      Math.abs(dir.x) > 1e-6 ? halfW / Math.abs(dir.x) : Infinity,
+      Math.abs(dir.y) > 1e-6 ? halfH / Math.abs(dir.y) : Infinity,
+    );
+    const x = cx + dir.x * scale;
+    const y = cy + dir.y * scale;
+
+    const distance = Math.round(V.distance(scene.ballPosition, hole));
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = palette.panel;
+    ctx.strokeStyle = palette.holeRim;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.rotate(Math.atan2(dir.y, dir.x));
+    ctx.fillStyle = palette.holeRim;
+    ctx.beginPath();
+    ctx.moveTo(11, 0);
+    ctx.lineTo(-2, -7);
+    ctx.lineTo(-2, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = palette.textDim;
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Keep the label inside the viewport when the arrow hugs an edge.
+    const labelY = clamp(y + 30, 14, this.height - 14);
+    ctx.fillText(`${distance}m`, clamp(x, 22, this.width - 22), labelY);
+    ctx.restore();
   }
 
   private applyWorldTransform(ctx: CanvasRenderingContext2D): void {
@@ -547,7 +620,9 @@ export class Renderer {
     // cue, not a colour cue, so it survives a colourblind player and a
     // washed-out screen alike.
     if (MATERIALS[body.material].deadly) {
-      this.drawDangerCorona(ctx, center, radius, palette);
+      // Clear the black hole's accretion rings, which reach to 1.6x.
+      const inset = body.style === 'blackhole' ? 1.75 : 1.06;
+      this.drawDangerCorona(ctx, center, radius, palette, inset);
     }
 
     ctx.restore();
@@ -558,10 +633,11 @@ export class Renderer {
     center: Vec2,
     radius: number,
     palette: Palette,
+    innerScale = 1.06,
   ): void {
     const spikes = Math.max(8, Math.round(radius / 5));
-    const inner = radius * 1.06;
-    const outer = radius * 1.3;
+    const inner = radius * innerScale;
+    const outer = inner + radius * 0.24;
     ctx.save();
     ctx.strokeStyle = palette.danger;
     ctx.lineWidth = Math.max(1.4, radius * 0.05);

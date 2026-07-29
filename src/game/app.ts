@@ -34,6 +34,9 @@ type AppScreen =
   | 'help'
   | 'scorecard';
 
+/** The ball stops being a legible object below roughly this scale. */
+const MIN_ZOOM = 0.55;
+
 const TRAIL_LENGTH = 34;
 /** Trail samples are spaced by time, not frames, so it looks the same at any FPS. */
 const TRAIL_INTERVAL = 1 / 60;
@@ -198,7 +201,15 @@ export class GameApp {
     const settings = this.progress.settings;
 
     camera.targetZoom = this.baseZoom * this.manualZoom;
-    const focus = session.state === 'flying' ? session.ball.position : session.ball.position;
+
+    let focus = session.ball.position;
+    if (session.state !== 'flying') {
+      // While aiming, lean the view toward the hole so the player can see where
+      // they are shooting. Capped by the viewport so the ball never slides off.
+      const lead = V.sub(session.world.hole.position, focus);
+      const maxLead = (camera.viewportWidth / Math.max(camera.zoom, 0.01)) * 0.22;
+      focus = V.add(focus, V.clampLength(V.mul(lead, 0.35), maxLead));
+    }
     camera.target = V.add(focus, this.cameraOffset);
 
     // While the ball is flying, ease out so more of the field is visible.
@@ -373,8 +384,11 @@ export class GameApp {
   private refitCamera(): void {
     const session = this.session;
     if (!session) return;
-    // Fit the level, but never zoom so far out that the ball becomes a speck.
-    this.baseZoom = clamp(this.renderer.camera.fit(session.world.bounds, 60, 1.4), 0.35, 1.4);
+    // Fit the whole hole when it fits comfortably. On a narrow screen — a phone
+    // in portrait against a landscape hole — fitting the full width would
+    // shrink the ball to a few pixels, so the zoom floors out and the camera
+    // pans with the ball instead.
+    this.baseZoom = clamp(this.renderer.camera.fit(session.world.bounds, 60, 1.4), MIN_ZOOM, 1.4);
     this.renderer.camera.limits = session.world.bounds;
   }
 
