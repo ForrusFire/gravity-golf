@@ -100,12 +100,15 @@ export interface TitleCallbacks {
   onSettings(): void;
   onHelp(): void;
   onScorecard(): void;
+  onDaily(): void;
+  onRandom(): void;
 }
 
 export const titleScreen = (
   callbacks: TitleCallbacks,
   progress: ProgressStore,
   totalLevels: number,
+  dailyDone = false,
 ): HTMLElement => {
   const completed = progress.completedCount();
   const stars = progress.totalStars();
@@ -121,6 +124,8 @@ export const titleScreen = (
     el('div', { class: 'title__buttons' }, [
       button(completed > 0 ? 'Continue' : 'Play', callbacks.onPlay, { class: 'btn--primary' }),
       button('Select hole', callbacks.onLevels),
+      button(dailyDone ? "Daily challenge ✓" : 'Daily challenge', callbacks.onDaily),
+      button('Random hole', callbacks.onRandom),
       button('Scorecard', callbacks.onScorecard),
       button('How to play', callbacks.onHelp),
       button('Settings', callbacks.onSettings),
@@ -557,6 +562,16 @@ export const scorecardScreen = (
     body,
   ]);
 };
+
+/* --------------------------------------------------------------- loading */
+
+/** Shown while a hole is being generated and verified in the background. */
+export const loadingScreen = (message: string, detail: string): HTMLElement =>
+  el('div', { class: 'loading-panel', attrs: { role: 'status', 'aria-live': 'polite' } }, [
+    el('div', { class: 'loading-panel__orbit' }, [el('i'), el('i')]),
+    el('h2', { text: message }),
+    el('p', { class: 'loading-panel__detail', text: detail }),
+  ]);
 
 /* ------------------------------------------------------------------ help */
 

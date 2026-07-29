@@ -832,3 +832,73 @@ body.loading::after {
     padding: 0.35rem 0.25rem;
   }
 }
+
+/* ----------------------------------------------------------------- loading */
+
+.loading-panel {
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
+.loading-panel h2 {
+  margin: 1.4rem 0 0.3rem;
+  font-size: 1.2rem;
+}
+
+.loading-panel__detail {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  margin: 0;
+  max-width: 22rem;
+  margin-inline: auto;
+  line-height: 1.5;
+}
+
+.loading-panel__orbit {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto;
+}
+
+.loading-panel__orbit::before {
+  content: '';
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 32%, #5f92e6, #24386c);
+  box-shadow: 0 0 22px rgba(90, 150, 255, 0.4);
+}
+
+.loading-panel__orbit i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(150, 180, 255, 0.35);
+  animation: orbit 2.6s linear infinite;
+}
+
+.loading-panel__orbit i::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: #f7fafc;
+  box-shadow: 0 0 10px rgba(160, 220, 255, 0.8);
+}
+
+.loading-panel__orbit i:nth-child(2) {
+  inset: 14px;
+  animation-duration: 1.7s;
+  animation-direction: reverse;
+}
+
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -12,6 +12,7 @@ import {
   helpScreen,
   isLevelUnlocked,
   buildScorecard,
+  loadingScreen,
   levelSelectScreen,
   pauseScreen,
   scorecardScreen,
@@ -21,6 +22,8 @@ import {
 } from '../ui/screens';
 import { BALL_RADIUS, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
+import { dailyId, dailySeed } from './generator';
+import { LevelGenerator } from './generator-client';
 import { ProgressStore, type Settings } from './progress';
 import { PlaySession, type SessionEvent } from './session';
 
@@ -48,6 +51,7 @@ export class GameApp {
   private readonly overlay = new Overlay();
   private readonly hud: Hud;
   private readonly input: InputController;
+  private readonly generator = new LevelGenerator();
 
   private session: PlaySession | null = null;
   private screen: AppScreen = 'title';
@@ -68,6 +72,7 @@ export class GameApp {
   private rafHandle = 0;
   private running = false;
   private hintShownFor = new Set<string>();
+  private generating = false;
   private disposed = false;
 
   constructor(
@@ -136,6 +141,7 @@ export class GameApp {
     this.stop();
     this.input.dispose();
     this.audio.dispose();
+    this.generator.dispose();
     window.removeEventListener('resize', this.handleResize);
     document.removeEventListener('visibilitychange', this.handleVisibility);
   }
@@ -470,12 +476,76 @@ export class GameApp {
           onSettings: () => this.showSettings('title'),
           onHelp: () => this.showHelp('title'),
           onScorecard: () => this.showScorecard('title'),
+          onDaily: () => void this.playDaily(),
+          onRandom: () => void this.playRandom(),
         },
         this.progress,
         ALL_LEVELS.length,
+        this.progress.isCompleted(dailyId(new Date())),
       ),
       {},
     );
+  }
+
+  /* --------------------------------------------------- generated holes */
+
+  /**
+   * The daily challenge: one generated hole per calendar day, the same for
+   * everyone. It is cached after the first generation, so it is only ever
+   * verified once per device per day.
+   */
+  private async playDaily(): Promise<void> {
+    const today = new Date();
+    await this.playGenerated(
+      dailySeed(today),
+      dailyId(today),
+      'Building today\u2019s hole',
+      'Generating a course and checking it can actually be finished.',
+    );
+  }
+
+  /** An endless supply of one-off holes. Not cached — every press is new. */
+  private async playRandom(): Promise<void> {
+    // Math.random is fine here: the seed only has to differ between presses.
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    await this.playGenerated(
+      seed,
+      undefined,
+      'Building a hole',
+      'Generating a course and checking it can actually be finished.',
+    );
+  }
+
+  private async playGenerated(
+    seed: number,
+    cacheKey: string | undefined,
+    message: string,
+    detail: string,
+  ): Promise<void> {
+    if (this.generating) return;
+    this.generating = true;
+    const from = this.screen;
+    this.overlay.show(loadingScreen(message, detail), {});
+
+    try {
+      const level = await this.generator.generate(seed, cacheKey);
+      if (this.disposed) return;
+
+      if (!level) {
+        this.overlay.show(
+          loadingScreen('Could not build a hole', 'Something went wrong. Please try again.'),
+          {},
+        );
+        window.setTimeout(() => {
+          if (!this.disposed && this.screen === from) this.showTitle();
+        }, 1600);
+        return;
+      }
+
+      this.playLevel(cacheKey ? { ...level, id: cacheKey, name: `Daily: ${level.name}` } : level);
+    } finally {
+      this.generating = false;
+    }
   }
 
   private playNextUnfinished(): void {

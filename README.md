@@ -40,6 +40,19 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 4. Machinery | Lifts, spinning arms, wormholes, conveyors, clockwork |
 | 5. Singularity | Binary suns, nebulae, vortices, and everything at once |
 
+## Daily challenge and random holes
+
+Beyond the campaign there is a generated hole a day — the same one for
+everyone, derived from the date — plus an endless "random hole" button.
+
+Generated holes are held to the same bar as handmade ones: a candidate is only
+accepted if it validates *and* the solver can finish it, and its par is
+whatever the solver actually needed rather than a guess. Verification takes a
+second or two, so it runs in a Web Worker and the daily is cached after its
+first generation. Generated holes use only static bodies, which keeps the
+verified solution exactly reproducible — a hole that is completable only at one
+instant of a spinning arm's cycle is not a hole that was verified.
+
 ## How it is put together
 
 ```

@@ -291,6 +291,18 @@ export const blackHole = (
   };
 };
 
+/**
+ * The launch velocity for a shot. Both the game and the solver must derive it
+ * the same way, down to the last bit: the solver's guarantee is that its exact
+ * shot list replays, and gravity slingshots amplify a 1e-16 difference in the
+ * impulse into metres of divergence within two shots.
+ */
+export const shotImpulse = (direction: Vec2, power: number, maxPower: number): Vec2 => {
+  const dir = V.normalize(direction);
+  const clamped = power < 0 ? 0 : power > 1 ? 1 : power;
+  return V.mul(dir, clamped * maxPower);
+};
+
 /** Where a body sits at t=0, accounting for its motion. */
 export const bodyOrigin = (body: Body): Vec2 => shapeCenter(bodyShapeAt(body, 0));
 

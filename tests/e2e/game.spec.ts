@@ -279,6 +279,30 @@ test.describe('menus', () => {
     await expect(page.locator('.card__totals')).toContainText('1/30');
   });
 
+  test('the daily challenge generates a playable hole', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/');
+    await page.getByRole('button', { name: /^Daily challenge/ }).click();
+
+    // Generation runs in a worker; the page must stay responsive meanwhile.
+    await expect(page.locator('.loading-panel')).toBeVisible();
+
+    await expect
+      .poll(async () => (await sessionState(page))?.levelId, { timeout: 75_000 })
+      .toMatch(/^daily-\d{4}-\d{2}-\d{2}$/);
+
+    const state = (await sessionState(page))!;
+    expect(state.par).toBeGreaterThanOrEqual(2);
+    expect(state.canShoot).toBe(true);
+    await expect(page.locator('.hud__level')).toContainText('Daily:');
+
+    // The generated hole is cached, so returning to it is instant.
+    const cached = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => k.startsWith('gravity-golf/generated/')),
+    );
+    expect(cached.length).toBe(1);
+  });
+
   test('help screen explains the controls', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'How to play' }).click();

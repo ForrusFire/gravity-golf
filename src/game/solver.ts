@@ -11,7 +11,7 @@ import {
   type World,
 } from '../physics/world';
 import { DEFAULT_PHYSICS } from '../physics/types';
-import { BALL_RADIUS, compileLevel, levelMaxPower, type LevelDef } from './level';
+import { BALL_RADIUS, compileLevel, levelMaxPower, shotImpulse, type LevelDef } from './level';
 import { settledTee } from './session';
 
 export interface Shot {
@@ -165,7 +165,9 @@ export const solveLevel = (
             opts.powerSamples === 1
               ? 1
               : opts.minPower + ((1 - opts.minPower) * p) / (opts.powerSamples - 1);
-          const impulse = V.fromAngle(angle, power * maxPower);
+          // Identical arithmetic to PlaySession.shoot, so the shots this
+          // search returns are bit-for-bit the shots a player would take.
+          const impulse = shotImpulse(V.fromAngle(angle), power, maxPower);
           const sim = simulateShot(world, node.position, node.time, impulse, opts);
           simulated++;
           closestApproach = Math.min(closestApproach, sim.closest);
@@ -239,7 +241,7 @@ export const reachableStars = (
             world,
             node.position,
             node.time,
-            V.fromAngle(angle, power * maxPower),
+            shotImpulse(V.fromAngle(angle), power, maxPower),
             opts,
           );
           for (const id of sim.stars) seen.add(id);

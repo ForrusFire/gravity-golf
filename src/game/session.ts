@@ -22,6 +22,7 @@ import {
   compileLevel,
   levelMaxPower,
   levelShotTimeout,
+  shotImpulse,
   type LevelDef,
 } from './level';
 
@@ -177,16 +178,19 @@ export class PlaySession {
     this.safePosition = this.ball.position;
     this.shotTimer = 0;
     this.state = 'flying';
-    launchBall(this.ball, this.runtime, V.mul(dir, clamped * this.maxPower));
+    launchBall(this.ball, this.runtime, shotImpulse(dir, clamped, this.maxPower));
 
     return [{ type: 'shot', power: clamped, direction: dir, strokes: this.strokes }];
   }
 
   /** Preview of where the current aim would send the ball. */
   predict(direction: Vec2, power: number, options?: Partial<TrajectoryOptions>): Trajectory {
-    const dir = V.normalize(direction);
-    const impulse = V.mul(dir, clamp(power, 0, 1) * this.maxPower);
-    return predictTrajectory(this.world, this.ball, impulse, options);
+    return predictTrajectory(
+      this.world,
+      this.ball,
+      shotImpulse(direction, power, this.maxPower),
+      options,
+    );
   }
 
   /** Advances the simulation. `dt` is real elapsed seconds; clamped internally. */
