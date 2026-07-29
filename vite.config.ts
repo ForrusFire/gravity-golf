@@ -11,10 +11,5 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-  },
-  test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
-  },
+  }
 });
