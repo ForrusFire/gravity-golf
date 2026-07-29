@@ -37,6 +37,9 @@ type AppScreen =
   | 'help'
   | 'scorecard';
 
+/** Campaign level ids, so generated holes stay out of campaign counters. */
+const CAMPAIGN_IDS = ALL_LEVELS.map((level) => level.id);
+
 /** The ball stops being a legible object below roughly this scale. */
 const MIN_ZOOM = 0.55;
 
@@ -480,7 +483,7 @@ export class GameApp {
           onRandom: () => void this.playRandom(),
         },
         this.progress,
-        ALL_LEVELS.length,
+        CAMPAIGN_IDS,
         this.progress.isCompleted(dailyId(new Date())),
       ),
       {},

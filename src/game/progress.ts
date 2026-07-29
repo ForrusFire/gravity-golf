@@ -232,15 +232,27 @@ export class ProgressStore {
     return this.data.levels[levelId]?.bestStars ?? 0;
   }
 
-  totalStars(): number {
+  /**
+   * Stars collected. Pass the campaign's level ids to exclude generated holes:
+   * a daily challenge must not count toward unlocking a chapter, and it must
+   * not inflate the "x of y holes" readout either.
+   */
+  totalStars(ids?: readonly string[]): number {
     let total = 0;
-    for (const record of Object.values(this.data.levels)) total += record.bestStars;
+    for (const [id, record] of Object.entries(this.data.levels)) {
+      if (ids && !ids.includes(id)) continue;
+      total += record.bestStars;
+    }
     return total;
   }
 
-  completedCount(): number {
+  /** Completed holes, optionally scoped to a set of level ids. */
+  completedCount(ids?: readonly string[]): number {
     let total = 0;
-    for (const record of Object.values(this.data.levels)) if (record.completed) total++;
+    for (const [id, record] of Object.entries(this.data.levels)) {
+      if (ids && !ids.includes(id)) continue;
+      if (record.completed) total++;
+    }
     return total;
   }
 

@@ -223,3 +223,32 @@ describe('ProgressStore', () => {
     expect(store.isCompleted('c1-1')).toBe(true);
   });
 });
+
+describe('campaign scoping', () => {
+  // Daily and random holes are stored like any other level. They must not
+  // count toward campaign totals or, worse, unlock chapters.
+  const campaign = ['c1-1', 'c1-2', 'c1-3'];
+
+  const seeded = (): ProgressStore => {
+    const store = new ProgressStore(new MemoryStorage());
+    store.submit(result({ levelId: 'c1-1', strokes: 2, stars: 2 }));
+    store.submit(result({ levelId: 'daily-2026-07-29', strokes: 3, stars: 3 }));
+    store.submit(result({ levelId: 'gen-12345', strokes: 4, stars: 3 }));
+    return store;
+  };
+
+  it('counts every hole when unscoped', () => {
+    expect(seeded().completedCount()).toBe(3);
+    expect(seeded().totalStars()).toBe(8);
+  });
+
+  it('counts only campaign holes when scoped', () => {
+    expect(seeded().completedCount(campaign)).toBe(1);
+    expect(seeded().totalStars(campaign)).toBe(2);
+  });
+
+  it('ignores ids that have never been played', () => {
+    expect(seeded().completedCount(['c9-9'])).toBe(0);
+    expect(seeded().totalStars(['c9-9'])).toBe(0);
+  });
+});

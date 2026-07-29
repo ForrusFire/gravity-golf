@@ -107,11 +107,12 @@ export interface TitleCallbacks {
 export const titleScreen = (
   callbacks: TitleCallbacks,
   progress: ProgressStore,
-  totalLevels: number,
+  campaignIds: readonly string[],
   dailyDone = false,
 ): HTMLElement => {
-  const completed = progress.completedCount();
-  const stars = progress.totalStars();
+  const totalLevels = campaignIds.length;
+  const completed = progress.completedCount(campaignIds);
+  const stars = progress.totalStars(campaignIds);
   return el('div', { class: 'title' }, [
     el('h1', { class: 'title__logo' }, [
       el('span', { class: 'title__logo-main', text: 'GRAVITY' }),
@@ -163,8 +164,12 @@ export const levelSelectScreen = (
 ): HTMLElement => {
   const body = el('div', { class: 'levels' });
 
+  const campaignIds = ordered.map((level) => level.id);
+
   for (const chapter of chapters) {
-    const starsHeld = progress.totalStars();
+    // Chapter gates count campaign stars only — a generated hole is optional
+    // content and must not unlock the main course.
+    const starsHeld = progress.totalStars(campaignIds);
     const chapterLocked = starsHeld < chapter.starsRequired;
 
     body.append(
