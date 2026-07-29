@@ -61,9 +61,13 @@ export const CHAPTER_1: LevelDef[] = [
     id: 'c1-3',
     name: 'Slingshot',
     chapter: 0,
-    par: 2,
-    tee: vec(-500, -250),
-    hole: { position: vec(480, -250) },
+    // A slingshot onto a ledge is a three, not a two: the solver cannot find a
+    // two-stroke line at gameplay precision, so neither will a player.
+    par: 3,
+    tee: vec(-500, -230),
+    // Both ends sit on a ledge: a hole hanging in open space can only ever be
+    // lipped, because nothing slows the ball on the way in.
+    hole: { position: vec(480, -202) },
     bounds: BOUNDS,
     hint: 'Swing around a planet to steal a change of direction.',
     ambientDrag: 0.1,
@@ -71,6 +75,8 @@ export const CHAPTER_1: LevelDef[] = [
       planet('p1', vec(0, 90), 115, 1000, { range: 720 }),
       wall('gate-l', vec(-150, -400), vec(-150, -150), 10),
       wall('gate-r', vec(150, -400), vec(150, -150), 10),
+      wall('ledge-l', vec(-620, -190), vec(-330, -190), 12),
+      wall('ledge-r', vec(330, -190), vec(620, -190), 12),
     ],
     stars: [vec(0, -120), vec(-320, 60), vec(320, 60)],
   },

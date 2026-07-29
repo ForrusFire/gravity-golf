@@ -50,7 +50,8 @@ export const CHAPTER_5: LevelDef[] = [
     chapter: 4,
     par: 4,
     tee: vec(-680, 340),
-    hole: { position: vec(660, -360) },
+    // Sunk into the shelf so an arriving ball can roll down to capture speed.
+    hole: { position: vec(620, -314) },
     bounds: BOUNDS,
     hint: 'The nebula robs your speed. Get through it with something left.',
     ambientDrag: 0.06,

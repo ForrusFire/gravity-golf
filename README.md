@@ -78,9 +78,15 @@ npm run test:e2e   # Playwright, desktop and mobile viewports
 
 Two of the suites are worth calling out:
 
-- **Every hole is proven completable.** A beam search over shots plays each
-  level and must find a solution within par. A hole that cannot be finished
-  fails the build rather than shipping.
+- **Every hole is proven completable.** A beam search finds a solution within
+  par for each level, and that exact sequence of shots is then replayed through
+  a real play session and must sink. The search shares the game's integrator,
+  its timestep and its settled tee, so a solution is a shot list a player could
+  actually take. This matters more than it sounds: gravity slingshots are
+  chaotic, and when the search ran at a coarser step only half its solutions
+  survived being replayed at gameplay precision.
+- **Every star is proven collectable.** Chapters unlock on star totals, so a
+  star no shot can reach could strand a player short of the next chapter.
 - **Level validation** rejects buried tees, holes sunk inside a body, stars
   outside the play area and duplicate ids — the authoring mistakes that are
   invisible until someone plays the hole.

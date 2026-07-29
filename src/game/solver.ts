@@ -10,7 +10,9 @@ import {
   type SimEvent,
   type World,
 } from '../physics/world';
+import { DEFAULT_PHYSICS } from '../physics/types';
 import { BALL_RADIUS, compileLevel, levelMaxPower, type LevelDef } from './level';
+import { settledTee } from './session';
 
 export interface Shot {
   /** Radians. */
@@ -29,7 +31,7 @@ export interface SolveOptions {
   maxStrokes: number;
   /** Simulated seconds allowed per shot. */
   shotTime: number;
-  /** Simulation step used while searching. Coarser than gameplay, for speed. */
+  /** Simulation step used while searching. Matches gameplay by default. */
   timeStep: number;
   /** Rest positions within this distance of each other are treated as one. */
   mergeRadius: number;
@@ -43,7 +45,11 @@ export const DEFAULT_SOLVE_OPTIONS: SolveOptions = {
   minPower: 0.25,
   maxStrokes: 3,
   shotTime: 12,
-  timeStep: 1 / 120,
+  // Deliberately the gameplay step, not a cheaper one. Gravity slingshots are
+  // chaotic: a coarser step finds solutions that do not survive being replayed
+  // at the real step, which would make "this hole is completable" a claim about
+  // a simulation nobody plays.
+  timeStep: DEFAULT_PHYSICS.timeStep,
   mergeRadius: 45,
   beamWidth: 6,
 };
@@ -140,8 +146,11 @@ export const solveLevel = (
   const world = compileLevel(level);
   const maxPower = levelMaxPower(level);
 
-  let frontier: SearchNode[] = [{ position: level.tee, time: 0, shots: [] }];
-  let closestApproach = V.distance(level.tee, world.hole.position);
+  // The game settles the ball before handing over control, so searching from
+  // the authored tee would solve a hole that is not the one being played.
+  const start = settledTee(level);
+  let frontier: SearchNode[] = [{ position: start, time: 0, shots: [] }];
+  let closestApproach = V.distance(start, world.hole.position);
   let simulated = 0;
   const starsSeen = new Set<string>();
 
@@ -213,7 +222,7 @@ export const reachableStars = (
   const seen = new Set<string>();
   const maxPower = levelMaxPower(level);
 
-  let frontier: Array<{ position: Vec2; time: number }> = [{ position: level.tee, time: 0 }];
+  let frontier: Array<{ position: Vec2; time: number }> = [{ position: settledTee(level), time: 0 }];
 
   for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
     const rests: Array<{ position: Vec2; time: number; score: number }> = [];
