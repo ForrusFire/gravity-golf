@@ -3,72 +3,60 @@ import { Rng } from '../core/rng';
 import type { Vec2 } from '../core/vec2';
 import type { Palette } from './palette';
 
-interface Star {
-  x: number;
-  y: number;
-  size: number;
-  brightness: number;
+interface LayerSpec {
   /** Parallax factor: 0 is infinitely far, 1 moves with the world. */
   depth: number;
-  twinklePhase: number;
-  twinkleRate: number;
-}
-
-interface NebulaBlob {
-  x: number;
-  y: number;
-  radius: number;
-  depth: number;
-  color: string;
+  stars: number;
+  nebulae: number;
+  minSize: number;
+  maxSize: number;
+  minAlpha: number;
+  maxAlpha: number;
 }
 
 /**
- * Parallax background. Stars live on a repeating tile in "sky space" so the
- * field is infinite without storing an infinite number of stars.
+ * Three depth bands rather than per-star depth. Baking each band into one
+ * bitmap is what makes the background cheap to draw; the difference from
+ * continuous parallax is not visible at these speeds.
+ */
+const LAYERS: LayerSpec[] = [
+  { depth: 0.08, stars: 130, nebulae: 5, minSize: 0.5, maxSize: 1.1, minAlpha: 0.2, maxAlpha: 0.5 },
+  { depth: 0.2, stars: 80, nebulae: 2, minSize: 0.8, maxSize: 1.6, minAlpha: 0.35, maxAlpha: 0.75 },
+  { depth: 0.42, stars: 45, nebulae: 0, minSize: 1.1, maxSize: 2.2, minAlpha: 0.5, maxAlpha: 1 },
+];
+
+interface BakedLayer {
+  depth: number;
+  canvas: HTMLCanvasElement | OffscreenCanvas | null;
+}
+
+/**
+ * Parallax background.
+ *
+ * Each depth band is rasterised once into a square tile and then blitted,
+ * instead of re-rasterising hundreds of arcs and radial gradients every frame.
+ * Radial-gradient fills are the single most expensive thing a 2D canvas does,
+ * and the background used to redraw dozens of screen-sized ones per frame.
  */
 export class Starfield {
-  private stars: Star[] = [];
-  private nebulae: NebulaBlob[] = [];
+  private layers: BakedLayer[] = [];
+  private bakedFor: string | null = null;
   private time = 0;
 
   constructor(
-    private readonly tileSize = 1400,
-    seed = 20240,
-    starCount = 260,
-  ) {
-    const rng = new Rng(seed);
-    for (let i = 0; i < starCount; i++) {
-      const depth = rng.range(0.05, 0.55);
-      this.stars.push({
-        x: rng.range(0, tileSize),
-        y: rng.range(0, tileSize),
-        // Nearer stars are drawn larger and brighter.
-        size: rng.range(0.5, 1.6) * (0.6 + depth),
-        brightness: rng.range(0.25, 1) * (0.5 + depth),
-        depth,
-        twinklePhase: rng.range(0, TAU),
-        twinkleRate: rng.range(0.4, 1.8),
-      });
-    }
-    for (let i = 0; i < 7; i++) {
-      this.nebulae.push({
-        x: rng.range(0, tileSize),
-        y: rng.range(0, tileSize),
-        radius: rng.range(280, 620),
-        depth: rng.range(0.04, 0.16),
-        color: rng.bool() ? 'a' : 'b',
-      });
-    }
-  }
+    private readonly tileSize = 1024,
+    private readonly seed = 20240,
+  ) {}
 
   update(dt: number): void {
     this.time += dt;
   }
 
-  /**
-   * Draws the field for a camera centred on `eye`. Runs in screen space, so the
-   * caller must not have a world transform applied.
-   */
+  /** Discards baked tiles so the next draw re-bakes (e.g. on palette change). */
+  invalidate(): void {
+    this.bakedFor = null;
+  }
+
   draw(
     ctx: CanvasRenderingContext2D,
     eye: Vec2,
@@ -84,61 +72,77 @@ export class Starfield {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
-    this.drawLayer(this.nebulae, eye, width, height, zoom, (blob, sx, sy, scale) => {
-      const r = blob.radius * scale;
-      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-      grad.addColorStop(0, blob.color === 'a' ? palette.nebulaA : palette.nebulaB);
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, TAU);
-      ctx.fill();
-    });
+    this.bake(palette);
 
-    ctx.fillStyle = palette.star;
-    this.drawLayer(this.stars, eye, width, height, zoom, (star, sx, sy, scale) => {
-      let alpha = star.brightness;
-      if (twinkle) {
-        alpha *= 0.72 + 0.28 * Math.sin(this.time * star.twinkleRate + star.twinklePhase);
-      }
-      ctx.globalAlpha = alpha;
-      const r = star.size * Math.max(0.6, scale);
-      ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, TAU);
-      ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-  }
-
-  /** Tiles one parallax layer across the viewport and draws each item once. */
-  private drawLayer<T extends { x: number; y: number; depth: number }>(
-    items: T[],
-    eye: Vec2,
-    width: number,
-    height: number,
-    zoom: number,
-    drawItem: (item: T, sx: number, sy: number, scale: number) => void,
-  ): void {
     const tile = this.tileSize;
-    for (const item of items) {
-      const scale = zoom * (0.55 + item.depth);
-      // Offset the layer by a fraction of the camera position for parallax.
-      const baseX = item.x - eye.x * item.depth * zoom;
-      const baseY = item.y - eye.y * item.depth * zoom;
-      const step = tile;
+    ctx.save();
+    for (const layer of this.layers) {
+      if (!layer.canvas) continue;
+      // A slow global shimmer costs nothing, unlike per-star twinkling.
+      ctx.globalAlpha = twinkle ? 0.86 + 0.14 * Math.sin(this.time * 0.7 + layer.depth * 9) : 1;
 
-      // Wrap into the visible range, then tile forward.
-      let startX = ((baseX % step) + step) % step;
-      let startY = ((baseY % step) + step) % step;
-      startX -= step;
-      startY -= step;
+      const shiftX = -eye.x * layer.depth * zoom;
+      const shiftY = -eye.y * layer.depth * zoom;
+      const startX = (((shiftX % tile) + tile) % tile) - tile;
+      const startY = (((shiftY % tile) + tile) % tile) - tile;
 
-      for (let sx = startX; sx < width + step; sx += step) {
-        for (let sy = startY; sy < height + step; sy += step) {
-          if (sx < -step || sy < -step) continue;
-          drawItem(item, sx, sy, scale);
+      for (let x = startX; x < width; x += tile) {
+        for (let y = startY; y < height; y += tile) {
+          ctx.drawImage(layer.canvas as CanvasImageSource, x, y);
         }
       }
     }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  /** Rasterises each depth band once for the given palette. */
+  private bake(palette: Palette): void {
+    const key = `${palette.star}|${palette.nebulaA}|${palette.nebulaB}`;
+    if (this.bakedFor === key) return;
+    this.bakedFor = key;
+
+    const size = this.tileSize;
+    this.layers = LAYERS.map((spec, index) => {
+      const canvas = createCanvas(size, size);
+      const ctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
+      if (!canvas || !ctx) return { depth: spec.depth, canvas: null };
+
+      const rng = new Rng(this.seed + index * 7919);
+
+      for (let i = 0; i < spec.nebulae; i++) {
+        const cx = rng.range(0, size);
+        const cy = rng.range(0, size);
+        const r = rng.range(size * 0.22, size * 0.45);
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0, rng.bool() ? palette.nebulaA : palette.nebulaB);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      }
+
+      ctx.fillStyle = palette.star;
+      for (let i = 0; i < spec.stars; i++) {
+        // Keep stars clear of the tile seam so the repeat is not obvious.
+        const x = rng.range(2, size - 2);
+        const y = rng.range(2, size - 2);
+        ctx.globalAlpha = rng.range(spec.minAlpha, spec.maxAlpha);
+        ctx.beginPath();
+        ctx.arc(x, y, rng.range(spec.minSize, spec.maxSize), 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      return { depth: spec.depth, canvas };
+    });
   }
 }
+
+const createCanvas = (width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null => {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+};

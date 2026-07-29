@@ -1,6 +1,6 @@
 import { TAU } from '../core/math';
 import * as V from '../core/vec2';
-import type { Vec2 } from '../core/vec2';
+import type { MutVec2, Vec2 } from '../core/vec2';
 import type { Body, CapsuleShape, CircleShape, MotionSpec, PolygonShape, Shape } from './types';
 
 /** Result of querying the closest point on a shape's surface. */
@@ -51,6 +51,32 @@ export const worldVertices = (shape: PolygonShape): Vec2[] => {
     x: shape.center.x + v.x * c - v.y * s,
     y: shape.center.y + v.x * s + v.y * c,
   }));
+};
+
+/**
+ * Scratch buffer for polygon queries.
+ *
+ * `closestSurfacePoint` runs thousands of times per frame — once per collision
+ * check per substep, and once per gravity-field grid cell. Allocating a fresh
+ * vertex array each time was the single largest source of GC pressure in the
+ * simulation, so the world-space vertices are written into a reused buffer
+ * instead. Safe because the query reads the buffer and returns plain numbers;
+ * nothing retains a reference to it.
+ */
+const scratchVertices: MutVec2[] = [];
+
+const fillWorldVertices = (shape: PolygonShape): number => {
+  const c = Math.cos(shape.rotation);
+  const s = Math.sin(shape.rotation);
+  const n = shape.vertices.length;
+  while (scratchVertices.length < n) scratchVertices.push({ x: 0, y: 0 });
+  for (let i = 0; i < n; i++) {
+    const v = shape.vertices[i]!;
+    const out = scratchVertices[i]!;
+    out.x = shape.center.x + v.x * c - v.y * s;
+    out.y = shape.center.y + v.x * s + v.y * c;
+  }
+  return n;
 };
 
 /** Builds a regular n-gon with the given circumradius. */
@@ -125,8 +151,8 @@ const queryCapsule = (shape: CapsuleShape, p: Vec2): SurfaceQuery => {
 };
 
 const queryPolygon = (shape: PolygonShape, p: Vec2): SurfaceQuery => {
-  const verts = worldVertices(shape);
-  const n = verts.length;
+  const n = fillWorldVertices(shape);
+  const verts = scratchVertices;
   if (n === 0) {
     return { point: shape.center, normal: { x: 0, y: -1 }, distance: Infinity, inside: false };
   }

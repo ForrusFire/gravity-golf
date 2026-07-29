@@ -84,6 +84,38 @@ describe('gravity field', () => {
     expect(V.length(gravityAt(world, V.vec(250, 0)))).toBeGreaterThan(0);
   });
 
+  it('adds uniform gravity everywhere, independent of distance', () => {
+    const world = makeWorld({ uniformGravity: V.vec(0, 400) });
+    expect(gravityAt(world, V.vec(0, 0))).toEqual({ x: 0, y: 400 });
+    expect(gravityAt(world, V.vec(99999, -99999))).toEqual({ x: 0, y: 400 });
+  });
+
+  it('sums uniform gravity with body gravity', () => {
+    const world = makeWorld({
+      uniformGravity: V.vec(0, 100),
+      bodies: [planet(V.vec(0, 0), 100, 400)],
+    });
+    // At the surface directly above, the body pulls down 400 and the uniform
+    // field adds another 100.
+    expect(gravityAt(world, V.vec(0, -100)).y).toBeCloseTo(500, 6);
+  });
+
+  it('scales uniform gravity inside a gravityScale zone', () => {
+    const world = makeWorld({
+      uniformGravity: V.vec(0, 400),
+      zones: [
+        {
+          id: 'null',
+          kind: 'gravityScale',
+          area: { kind: 'circle', center: V.vec(0, 0), radius: 50 },
+          scale: 0,
+        },
+      ],
+    });
+    expect(gravityAt(world, V.vec(0, 0)).y).toBe(0);
+    expect(gravityAt(world, V.vec(500, 0)).y).toBeCloseTo(400, 6);
+  });
+
   it('is scaled by gravityScale zones', () => {
     const world = makeWorld({
       bodies: [planet(V.vec(0, 0), 100, 400)],

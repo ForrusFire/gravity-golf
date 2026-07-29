@@ -10,7 +10,7 @@ import {
   worldVertices,
   type Aabb,
 } from '../physics/geometry';
-import type { Body, Shape, Zone } from '../physics/types';
+import { MATERIALS, type Body, type Shape, type Zone } from '../physics/types';
 import { gravityAt, type World } from '../physics/world';
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
@@ -49,6 +49,9 @@ export interface Scene {
 
 const overlaps = (a: Aabb, b: Aabb): boolean =>
   a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+
+/** Only solid ground gets cratered — a star or a goo blob should not. */
+const ROCKY_STYLES = new Set<string>(['planet', 'moon', 'asteroid', 'sand']);
 
 /** Deterministic surface detail so a given planet always looks the same. */
 interface BodyDecor {
@@ -120,7 +123,7 @@ export class Renderer {
     for (const body of scene.world.bodies) {
       const shape = bodyShapeAt(body, scene.world.time);
       if (!overlaps(shapeBounds(shape), view)) continue;
-      this.drawBody(ctx, body, shape);
+      this.drawBody(ctx, body, shape, options.palette);
     }
 
     // After the bodies: a cup sunk into the ground must not be painted over by
@@ -316,13 +319,20 @@ export class Renderer {
     const cy = (bounds.minY + bounds.maxY) / 2;
     const span = Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2;
 
+    const head = 5;
     for (let lane = -span; lane <= span; lane += spacing) {
       for (let along = -span + drift; along <= span; along += spacing) {
         const x = cx + dir.x * along + perp.x * lane;
         const y = cy + dir.y * along + perp.y * lane;
+        const tipX = x + dir.x * 14;
+        const tipY = y + dir.y * 14;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.lineTo(x + dir.x * 12, y + dir.y * 12);
+        ctx.lineTo(tipX, tipY);
+        // Arrowheads: the tick alone shows the axis but not which way it pushes.
+        ctx.moveTo(tipX - dir.x * head + perp.x * head, tipY - dir.y * head + perp.y * head);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(tipX - dir.x * head - perp.x * head, tipY - dir.y * head - perp.y * head);
         ctx.stroke();
       }
     }
@@ -441,14 +451,26 @@ export class Renderer {
     return decor;
   }
 
-  private drawBody(ctx: CanvasRenderingContext2D, body: Body, shape: Shape): void {
+  private drawBody(
+    ctx: CanvasRenderingContext2D,
+    body: Body,
+    shape: Shape,
+    palette: Palette,
+  ): void {
     const colors = colorsForBody(body.style, body.material);
     const center = shapeCenter(shape);
     const radius = Math.max(shapeRadius(shape), 1);
 
     ctx.save();
 
-    if (colors.glow) {
+    // A body far larger than the screen (a planet used as ground) shows only a
+    // sliver of its surface. Shading it with a body-sized gradient costs a full
+    // screen of gradient rasterisation to produce a flat-looking result, so
+    // oversized bodies get flat fills and no glow.
+    const screenRadius = radius * this.camera.zoom;
+    const oversized = screenRadius > Math.max(this.width, this.height);
+
+    if (colors.glow && !oversized) {
       const glowRadius = radius * (body.style === 'sun' ? 2.6 : 1.7);
       const grad = ctx.createRadialGradient(center.x, center.y, radius * 0.7, center.x, center.y, glowRadius);
       grad.addColorStop(0, colors.glow);
@@ -460,7 +482,7 @@ export class Renderer {
     }
 
     // Body fill: lit from the upper-left so shapes read as solid.
-    if (shape.kind === 'circle') {
+    if (shape.kind === 'circle' && !oversized) {
       const grad = ctx.createRadialGradient(
         center.x - radius * 0.35,
         center.y - radius * 0.35,
@@ -491,7 +513,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius * 1.6, 0, TAU);
       ctx.stroke();
-    } else if (shape.kind === 'circle' && radius > 24) {
+    } else if (shape.kind === 'circle' && radius > 24 && ROCKY_STYLES.has(body.style ?? 'planet')) {
       const decor = this.decorFor(body, radius);
       ctx.save();
       this.tracePath(ctx, shape);
@@ -506,12 +528,55 @@ export class Renderer {
       ctx.restore();
     }
 
+    if (body.style === 'bumper') {
+      // Concentric rings read as "springy" without relying on hue.
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = colors.rim;
+      ctx.lineWidth = Math.max(1, radius * 0.06);
+      for (const scale of [0.66, 0.4]) {
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius * scale, 0, TAU);
+        ctx.stroke();
+      }
+    }
+
     ctx.globalAlpha = 1;
     ctx.strokeStyle = colors.rim;
     ctx.lineWidth = Math.max(1.2, radius * 0.035);
     this.tracePath(ctx, shape);
     ctx.stroke();
 
+    // Anything that destroys the ball wears a serrated corona. It is a shape
+    // cue, not a colour cue, so it survives a colourblind player and a
+    // washed-out screen alike.
+    if (MATERIALS[body.material].deadly) {
+      this.drawDangerCorona(ctx, center, radius, palette);
+    }
+
+    ctx.restore();
+  }
+
+  private drawDangerCorona(
+    ctx: CanvasRenderingContext2D,
+    center: Vec2,
+    radius: number,
+    palette: Palette,
+  ): void {
+    const spikes = Math.max(8, Math.round(radius / 5));
+    const inner = radius * 1.06;
+    const outer = radius * 1.3;
+    ctx.save();
+    ctx.strokeStyle = palette.danger;
+    ctx.lineWidth = Math.max(1.4, radius * 0.05);
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    for (let i = 0; i < spikes; i++) {
+      const a = (i / spikes) * TAU;
+      ctx.moveTo(center.x + Math.cos(a) * inner, center.y + Math.sin(a) * inner);
+      ctx.lineTo(center.x + Math.cos(a) * outer, center.y + Math.sin(a) * outer);
+    }
+    ctx.stroke();
     ctx.restore();
   }
 

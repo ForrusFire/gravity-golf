@@ -671,6 +671,7 @@ const EMPTY_SCENE_WORLD = {
   hole: { position: { x: 0, y: -100000 }, radius: 1, captureSpeed: 1 },
   bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
   boundsMode: 'open' as const,
+  uniformGravity: { x: 0, y: 0 },
   config: {
     timeStep: 1 / 240,
     ambientDrag: 0,

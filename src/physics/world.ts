@@ -18,6 +18,7 @@ import {
   type MaterialId,
   type PhysicsConfig,
   type Portal,
+  type Shape,
   type Zone,
 } from './types';
 
@@ -45,10 +46,52 @@ export interface World {
   hole: Hole;
   bounds: Aabb;
   boundsMode: BoundsMode;
+  /**
+   * A constant acceleration applied everywhere, for holes that just want a
+   * "down". Cheaper and more honest than parking an enormous planet off-screen,
+   * and unlike a body it is unaffected by distance.
+   */
+  uniformGravity: Vec2;
   config: PhysicsConfig;
   /** Simulation clock in seconds; drives every moving body. */
   time: number;
+  /** Internal per-instant shape cache. Never write this from outside. */
+  shapeCache?: ShapeCache;
 }
+
+interface ResolvedBody {
+  body: Body;
+  shape: Shape;
+  center: Vec2;
+  radius: number;
+}
+
+interface ShapeCache {
+  time: number;
+  /** Identity check, so a copied world with different bodies rebuilds. */
+  source: Body[];
+  items: ResolvedBody[];
+}
+
+/**
+ * Bodies resolved to their world-space shapes at time `t`.
+ *
+ * Gravity, collision and surface-velocity queries all want the same answer
+ * many times per instant — the field overlay alone asks hundreds of times per
+ * frame. Resolving once per instant turns that into a single pass.
+ */
+const resolveBodies = (world: World, t: number): ResolvedBody[] => {
+  const cache = world.shapeCache;
+  if (cache && cache.time === t && cache.source === world.bodies) return cache.items;
+
+  const items: ResolvedBody[] = [];
+  for (const body of world.bodies) {
+    const shape = bodyShapeAt(body, t);
+    items.push({ body, shape, center: shapeCenter(shape), radius: shapeRadius(shape) });
+  }
+  world.shapeCache = { time: t, source: world.bodies, items };
+  return items;
+};
 
 export type DeathCause = 'hazard' | 'out-of-bounds' | 'crushed';
 
@@ -100,6 +143,7 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
   portals: [],
   collectibles: [],
   boundsMode: 'kill',
+  uniformGravity: V.ZERO,
   config: DEFAULT_PHYSICS,
   time: 0,
   ...init,
@@ -122,15 +166,14 @@ export const gravityScaleAt = (world: World, p: Vec2): number => {
  * pull is `strength` at its own radius and falls off with the inverse square.
  */
 export const gravityAt = (world: World, p: Vec2, t = world.time): Vec2 => {
-  let ax = 0;
-  let ay = 0;
+  let ax = world.uniformGravity.x;
+  let ay = world.uniformGravity.y;
   const soft = world.config.gravitySoftening;
 
-  for (const body of world.bodies) {
-    const g = body.gravity;
+  for (const resolved of resolveBodies(world, t)) {
+    const g = resolved.body.gravity;
     if (!g || g.strength === 0) continue;
-    const shape = bodyShapeAt(body, t);
-    const center = shapeCenter(shape);
+    const center = resolved.center;
     const dx = center.x - p.x;
     const dy = center.y - p.y;
     const distSq = dx * dx + dy * dy;
@@ -138,7 +181,7 @@ export const gravityAt = (world: World, p: Vec2, t = world.time): Vec2 => {
     const dist = Math.sqrt(distSq);
     if (g.range > 0 && dist > g.range) continue;
 
-    const r = Math.max(shapeRadius(shape), 1);
+    const r = Math.max(resolved.radius, 1);
     // Softened denominator: keeps the pull finite as the ball approaches the core.
     const denom = Math.max(dist, r * soft);
     let mag = (g.strength * r * r) / (denom * denom);
@@ -226,12 +269,17 @@ const findDeepestContact = (
 ): Contact | null => {
   let best: Contact | null = null;
   const reach = ball.radius + skin;
-  for (const body of world.bodies) {
-    const shape = bodyShapeAt(body, t);
-    const query = closestSurfacePoint(shape, ball.position);
+  for (const resolved of resolveBodies(world, t)) {
+    // Cheap reject on the bounding circle before the exact surface query.
+    const dx = resolved.center.x - ball.position.x;
+    const dy = resolved.center.y - ball.position.y;
+    const far = resolved.radius + reach;
+    if (dx * dx + dy * dy > far * far) continue;
+
+    const query = closestSurfacePoint(resolved.shape, ball.position);
     if (query.distance >= reach) continue;
     const penetration = ball.radius - query.distance;
-    if (!best || penetration > best.penetration) best = { body, query, penetration };
+    if (!best || penetration > best.penetration) best = { body: resolved.body, query, penetration };
   }
   return best;
 };

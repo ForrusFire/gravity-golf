@@ -1,4 +1,5 @@
 import { GameApp } from './game/app';
+import { ALL_LEVELS, levelById } from './game/levels';
 import './styles.css';
 
 const mount = (): void => {
@@ -8,7 +9,15 @@ const mount = (): void => {
   const app = new GameApp(container);
   app.start();
 
-  // Expose for end-to-end tests and debugging. Harmless in production.
+  // Exposed for end-to-end tests and the screenshot tool. Read-only helpers
+  // plus the app itself; harmless in production.
+  Object.assign(app as object, {
+    levelIds: () => ALL_LEVELS.map((level) => level.id),
+    debugPlay: (id: string) => {
+      const level = levelById(id);
+      if (level) app.playLevel(level);
+    },
+  });
   (window as unknown as { gravityGolf: GameApp }).gravityGolf = app;
 
   document.body.classList.remove('loading');

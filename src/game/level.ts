@@ -31,6 +31,11 @@ export interface LevelDef {
   hint?: string;
   /** Overrides the ambient "space dust" drag for this hole. */
   ambientDrag?: number;
+  /**
+   * A constant acceleration applied everywhere on the hole. Use this for a
+   * plain "down" instead of parking a huge planet off-screen.
+   */
+  uniformGravity?: Vec2;
   /** Maximum launch speed in units/s. */
   maxPower?: number;
   /** Seconds a shot may run before it is abandoned and replayed. */
@@ -68,6 +73,7 @@ export const compileLevel = (level: LevelDef): World =>
     },
     bounds: level.bounds,
     boundsMode: level.boundsMode ?? 'kill',
+    uniformGravity: level.uniformGravity ?? V.ZERO,
     config: { ...DEFAULT_PHYSICS, ambientDrag: level.ambientDrag ?? DEFAULT_PHYSICS.ambientDrag },
     time: 0,
   });
@@ -174,7 +180,9 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
   }
 
   // A hole with no gravity anywhere and no walls is a straight-line putt.
-  const hasGravity = (level.bodies ?? []).some((body) => body.gravity && body.gravity.strength !== 0);
+  const hasGravity =
+    (level.bodies ?? []).some((body) => body.gravity && body.gravity.strength !== 0) ||
+    (level.uniformGravity !== undefined && V.lengthSq(level.uniformGravity) > 0);
   if (!hasGravity && (level.zones ?? []).length === 0 && level.chapter > 0) {
     warn('no gravity sources or zones — the hole may be trivial');
   }

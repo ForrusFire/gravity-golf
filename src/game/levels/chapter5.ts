@@ -81,10 +81,8 @@ export const CHAPTER_5: LevelDef[] = [
     bounds: BOUNDS,
     hint: 'The vortex spins you outward. Enter on the side you want to leave.',
     ambientDrag: 0.12,
+    uniformGravity: vec(0, 360),
     bodies: [
-      // Far below the play area, so it reads as a uniform downward pull rather
-      // than as a planet you can land on.
-      planet('well', vec(0, 2000), 1520, 400, { range: 2600 }),
       wall('floor-l', vec(-720, 400), vec(-150, 400), 12),
       wall('floor-r', vec(250, 400), vec(720, 400), 12),
       rock('eye', vec(50, 250), 34),

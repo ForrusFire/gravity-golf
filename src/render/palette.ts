@@ -88,7 +88,9 @@ const BODY_COLORS: Record<BodyStyle, BodyColors> = {
   planet: { fill: '#4a7fd4', fillDark: '#23386e', rim: '#8fc0ff', glow: 'rgba(90,150,255,0.28)' },
   moon: { fill: '#98a3c4', fillDark: '#4a5170', rim: '#d5dcf2', glow: 'rgba(180,195,235,0.22)' },
   wall: { fill: '#5b6486', fillDark: '#333a52', rim: '#98a2c6', glow: null },
-  bumper: { fill: '#ff9f45', fillDark: '#a4551b', rim: '#ffd9a8', glow: 'rgba(255,160,70,0.35)' },
+  // Deliberately not orange: bumpers must never be mistaken for a sun, which
+  // is the difference between a free bounce and a destroyed ball.
+  bumper: { fill: '#28c9a4', fillDark: '#0d6b57', rim: '#9dffe6', glow: 'rgba(40,201,164,0.35)' },
   asteroid: { fill: '#7a6a58', fillDark: '#40372d', rim: '#b7a389', glow: null },
   sun: { fill: '#ffb037', fillDark: '#e0561d', rim: '#fff2c4', glow: 'rgba(255,140,40,0.5)' },
   blackhole: { fill: '#08060f', fillDark: '#000000', rim: '#a06bff', glow: 'rgba(150,80,255,0.45)' },
