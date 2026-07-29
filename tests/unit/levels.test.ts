@@ -9,6 +9,7 @@ import {
   validateLevels,
   type LevelDef,
 } from '../../src/game/level';
+import { PlaySession } from '../../src/game/session';
 import { solveLevel } from '../../src/game/solver';
 
 describe('level catalogue', () => {
@@ -168,6 +169,29 @@ describe('validateLevel', () => {
   it('detects duplicate ids across the whole catalogue', () => {
     const issues = validateLevels([base, base]);
     expect(issues.some((i) => i.message === 'duplicate level id')).toBe(true);
+  });
+});
+
+describe('tee placement', () => {
+  it('never lets the ball reach the cup without a shot being taken', () => {
+    const freebies: string[] = [];
+    for (const level of ALL_LEVELS) {
+      const session = new PlaySession(level);
+      // Ten seconds of doing nothing: the ball may settle, but must not sink.
+      for (let i = 0; i < 600; i++) session.update(1 / 60);
+      if (session.state === 'sunk') freebies.push(level.id);
+    }
+    expect(freebies).toEqual([]);
+  });
+
+  it('starts every hole with a ball that is ready to shoot', () => {
+    const notReady: string[] = [];
+    for (const level of ALL_LEVELS) {
+      const session = new PlaySession(level);
+      // The ball settles up front, so control is available immediately.
+      if (!session.canShoot) notReady.push(level.id);
+    }
+    expect(notReady).toEqual([]);
   });
 });
 

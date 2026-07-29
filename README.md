@@ -97,6 +97,14 @@ node tools/perf.mjs                 # per-frame CPU cost on the busiest holes
 deltas: in a headless, software-rasterised container the frame delta mostly
 measures the compositor, not the game.
 
+## Offline
+
+The production build emits a service worker that precaches every file it
+produced, so the game installs as a PWA and plays with no network at all.
+The precache list is generated from the bundle rather than hand-written, and
+the cache name is derived from a hash of the contents, so a new build always
+replaces the old cache instead of serving a mix of the two.
+
 ## Accessibility
 
 - Full keyboard play, and menus that trap focus and are labelled as dialogs.

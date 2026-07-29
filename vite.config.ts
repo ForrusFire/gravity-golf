@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
+import { serviceWorkerPlugin } from './build/service-worker-plugin';
 
 export default defineConfig({
   base: './',
+  plugins: [serviceWorkerPlugin()],
   build: {
     target: 'es2022',
     outDir: 'dist',

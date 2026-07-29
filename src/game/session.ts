@@ -60,6 +60,8 @@ export interface HoleResult {
 }
 
 export const medalFor = (strokes: number, par: number): Medal => {
+  // A hole cannot be finished in fewer than one stroke; treat anything lower
+  // as one rather than inventing a medal better than an ace.
   if (strokes <= 1) return 'ace';
   if (strokes < par) return 'gold';
   if (strokes === par) return 'silver';
@@ -315,18 +317,23 @@ export class PlaySession {
           this.bankPendingStars();
           this.longestShot = Math.max(this.longestShot, this.runtime.distance);
           this.state = 'sunk';
+          // The ball can reach the cup without a shot if it rolls in off the
+          // tee. Scoring that as zero strokes would report a result better
+          // than a hole in one, so the floor is one.
+          const strokes = Math.max(1, this.strokes);
+          this.strokes = strokes;
           this.result = {
             levelId: this.level.id,
-            strokes: this.strokes,
+            strokes,
             par: this.level.par,
             stars: this.bankedStars.size,
-            medal: medalFor(this.strokes, this.level.par),
+            medal: medalFor(strokes, this.level.par),
             time: this.playTime,
             longestShot: this.longestShot,
           };
           out.push({
             type: 'sunk',
-            strokes: this.strokes,
+            strokes,
             stars: this.bankedStars.size,
             result: this.result,
           });

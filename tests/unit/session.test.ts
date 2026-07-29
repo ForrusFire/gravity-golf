@@ -36,6 +36,36 @@ describe('medalFor', () => {
   it('treats a one-stroke finish as an ace even when par is 1', () => {
     expect(medalFor(1, 1)).toBe('ace');
   });
+
+  it('never ranks a zero-stroke finish above an ace', () => {
+    expect(medalFor(0, 3)).toBe('ace');
+  });
+});
+
+describe('zero-stroke finishes', () => {
+  it('scores a ball that rolls in unaided as one stroke, not zero', () => {
+    // A tee perched right above the cup: the ball reaches it without a shot.
+    const level: LevelDef = {
+      ...baseLevel,
+      tee: V.vec(0, -60),
+      hole: { position: V.vec(0, 0), radius: 20, captureSpeed: 400 },
+      bodies: [
+        {
+          id: 'ground',
+          shape: { kind: 'circle', center: V.vec(0, 700), radius: 600 },
+          material: 'rock',
+          gravity: { strength: 400, range: 0 },
+        },
+      ],
+    };
+    const session = new PlaySession(level);
+    run(session, 4);
+
+    expect(session.result).not.toBeNull();
+    expect(session.result!.strokes).toBe(1);
+    expect(session.result!.medal).toBe('ace');
+    expect(session.strokes).toBe(1);
+  });
 });
 
 describe('settledTee', () => {

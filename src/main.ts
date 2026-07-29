@@ -21,6 +21,22 @@ const mount = (): void => {
   (window as unknown as { gravityGolf: GameApp }).gravityGolf = app;
 
   document.body.classList.remove('loading');
+  registerServiceWorker();
+};
+
+/**
+ * Registers the generated service worker so the game is playable offline.
+ * Failure is never fatal — the game runs fine without it, and dev builds have
+ * no worker to register at all.
+ */
+const registerServiceWorker = (): void => {
+  if (!import.meta.env.PROD) return;
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      // Blocked by the browser, or served from a context without HTTPS.
+    });
+  });
 };
 
 if (document.readyState === 'loading') {

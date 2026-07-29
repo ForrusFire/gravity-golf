@@ -778,6 +778,11 @@ body.loading::after {
   font-variant-numeric: tabular-nums;
 }
 
+.card__table thead th:first-child,
+.card__table tbody th {
+  text-align: left;
+}
+
 .card__table thead th {
   font-size: 0.66rem;
   text-transform: uppercase;
@@ -787,17 +792,14 @@ body.loading::after {
 }
 
 .card__table tbody th {
-  text-align: left;
   font-weight: 600;
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
 }
 
 .card__num {
+  display: inline-block;
   color: var(--text-dim);
   font-size: 0.72rem;
-  min-width: 1.3rem;
+  min-width: 1.5rem;
 }
 
 .card__row--unplayed {
