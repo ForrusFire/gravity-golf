@@ -38,7 +38,7 @@ export interface LevelDef {
 }
 
 export const DEFAULT_HOLE_RADIUS = 15;
-export const DEFAULT_CAPTURE_SPEED = 260;
+export const DEFAULT_CAPTURE_SPEED = 320;
 export const DEFAULT_MAX_POWER = 900;
 export const DEFAULT_SHOT_TIMEOUT = 22;
 export const BALL_RADIUS = 7;

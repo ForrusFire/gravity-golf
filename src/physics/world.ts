@@ -386,11 +386,19 @@ const checkHole = (world: World, ball: Ball, dt: number, events: SimEvent[]): bo
   const dist = V.distance(ball.position, hole.position);
   const speed = V.length(ball.velocity);
 
-  if (dist < hole.radius * 2.2) {
-    // Rim funnel: a gentle pull that strengthens as the ball nears the centre.
-    const pull = (1 - dist / (hole.radius * 2.2)) * 900;
-    const dir = V.normalize(V.sub(hole.position, ball.position));
-    ball.velocity = V.addScaled(ball.velocity, dir, pull * dt);
+  const funnelRadius = hole.radius * 2.4;
+  if (dist < funnelRadius) {
+    // Rim funnel: strengthens as the ball nears the centre, and fades out as
+    // the ball gets faster. A slow ball that grazes the rim drops in; a fast
+    // one is barely deflected and skips straight over, which is the whole
+    // point of having a capture speed.
+    const closeness = 1 - dist / funnelRadius;
+    const slowness = clamp(1 - speed / (hole.captureSpeed * 1.6), 0, 1);
+    const pull = closeness * slowness * 1400;
+    if (pull > 0) {
+      const dir = V.normalize(V.sub(hole.position, ball.position));
+      ball.velocity = V.addScaled(ball.velocity, dir, pull * dt);
+    }
   }
 
   if (dist <= hole.radius) {

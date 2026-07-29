@@ -1,5 +1,9 @@
 import type { LevelDef } from '../level';
 import { CHAPTER_1 } from './chapter1';
+import { CHAPTER_2 } from './chapter2';
+import { CHAPTER_3 } from './chapter3';
+import { CHAPTER_4 } from './chapter4';
+import { CHAPTER_5 } from './chapter5';
 
 export interface Chapter {
   index: number;
@@ -17,6 +21,34 @@ export const CHAPTERS: Chapter[] = [
     subtitle: 'Learn to read a gravity well',
     starsRequired: 0,
     levels: CHAPTER_1,
+  },
+  {
+    index: 1,
+    name: 'Deep Field',
+    subtitle: 'Hazards, strange surfaces and moving debris',
+    starsRequired: 0,
+    levels: CHAPTER_2,
+  },
+  {
+    index: 2,
+    name: 'Event Horizon',
+    subtitle: 'Gravity stops being friendly',
+    starsRequired: 6,
+    levels: CHAPTER_3,
+  },
+  {
+    index: 3,
+    name: 'Machinery',
+    subtitle: 'Lifts, arms, wormholes and conveyors',
+    starsRequired: 14,
+    levels: CHAPTER_4,
+  },
+  {
+    index: 4,
+    name: 'Singularity',
+    subtitle: 'Everything at once',
+    starsRequired: 26,
+    levels: CHAPTER_5,
   },
 ];
 
