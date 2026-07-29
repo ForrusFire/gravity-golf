@@ -63,6 +63,3 @@ export const nextLevel = (id: string): LevelDef | undefined => {
   const index = levelIndex(id);
   return index >= 0 ? ALL_LEVELS[index + 1] : undefined;
 };
-
-export const chapterOf = (level: LevelDef): Chapter | undefined =>
-  CHAPTERS.find((c) => c.index === level.chapter);

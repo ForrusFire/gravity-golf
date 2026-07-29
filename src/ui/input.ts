@@ -13,10 +13,6 @@ export interface AimInput {
 }
 
 export interface InputCallbacks {
-  /** Screen point -> world point. */
-  toWorld(p: Vec2): Vec2;
-  /** Current ball position in world space, or null when no shot is possible. */
-  ballPosition(): Vec2 | null;
   canShoot(): boolean;
   onShoot(direction: Vec2, power: number): void;
   onPan(deltaScreen: Vec2): void;
@@ -137,11 +133,11 @@ export class InputController {
     }
   }
 
-  /** Begins keyboard aiming pointed at the given world direction. */
-  startKeyboardAim(direction?: Vec2): void {
+  /** Begins keyboard aiming from wherever the player last aimed. */
+  startKeyboardAim(): void {
     if (!this.callbacks.canShoot()) return;
     this.keyboardActive = true;
-    if (direction) this.keyAngle = V.angleOf(direction);
+    this.keyAngle = V.angleOf(this.lastDirection);
   }
 
   cancelAim(): void {

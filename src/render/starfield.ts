@@ -52,11 +52,6 @@ export class Starfield {
     this.time += dt;
   }
 
-  /** Discards baked tiles so the next draw re-bakes (e.g. on palette change). */
-  invalidate(): void {
-    this.bakedFor = null;
-  }
-
   draw(
     ctx: CanvasRenderingContext2D,
     eye: Vec2,

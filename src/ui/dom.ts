@@ -64,9 +64,6 @@ export const button = (
     [label],
   );
 
-export const icon = (glyph: string, label: string): HTMLSpanElement =>
-  el('span', { class: 'icon', text: glyph, attrs: { 'aria-hidden': 'true', title: label } });
-
 /** Formats seconds as m:ss. */
 export const formatTime = (seconds: number): string => {
   if (!Number.isFinite(seconds)) return '--:--';

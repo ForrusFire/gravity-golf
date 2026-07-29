@@ -57,6 +57,11 @@ export interface SolveResult {
   closestApproach: number;
   /** Total shots simulated — useful for tuning search cost. */
   simulated: number;
+  /**
+   * Ids of every star touched by any shot the search tried, whether or not
+   * that shot was part of a solution. Used to prove no star is stranded.
+   */
+  starsSeen: Set<string>;
 }
 
 type ShotOutcome = 'sink' | 'rest' | 'death' | 'timeout';
@@ -66,6 +71,8 @@ interface ShotSim {
   position: Vec2;
   time: number;
   closest: number;
+  /** Ids of stars this shot passed through. */
+  stars: string[];
 }
 
 /** Simulates one shot from a resting ball and reports where it ends up. */
@@ -78,9 +85,12 @@ const simulateShot = (
 ): ShotSim => {
   const sandbox: World = {
     ...world,
-    collectibles: [],
+    // A fresh copy each shot, so one shot's pickups do not hide a star from
+    // the next.
+    collectibles: world.collectibles.map((c) => ({ ...c, collected: false })),
     config: { ...world.config, timeStep: opts.timeStep },
     time: startTime,
+    shapeCache: undefined,
   };
   const ball: Ball = createBall(from, BALL_RADIUS);
   const runtime = createBallRuntime();
@@ -89,22 +99,26 @@ const simulateShot = (
   const events: SimEvent[] = [];
   const steps = Math.round(opts.shotTime / opts.timeStep);
   let closest = V.distance(from, world.hole.position);
+  const stars: string[] = [];
+
+  const finish = (outcome: ShotOutcome, closestDistance: number): ShotSim => ({
+    outcome,
+    position: ball.position,
+    time: sandbox.time,
+    closest: closestDistance,
+    stars,
+  });
 
   for (let i = 0; i < steps; i++) {
     events.length = 0;
     stepWorld(sandbox, ball, runtime, events);
+    for (const event of events) if (event.type === 'collect') stars.push(event.id);
     closest = Math.min(closest, V.distance(ball.position, world.hole.position));
-    if (runtime.sunk) {
-      return { outcome: 'sink', position: ball.position, time: sandbox.time, closest: 0 };
-    }
-    if (!runtime.alive) {
-      return { outcome: 'death', position: ball.position, time: sandbox.time, closest };
-    }
-    if (ball.atRest) {
-      return { outcome: 'rest', position: ball.position, time: sandbox.time, closest };
-    }
+    if (runtime.sunk) return finish('sink', 0);
+    if (!runtime.alive) return finish('death', closest);
+    if (ball.atRest) return finish('rest', closest);
   }
-  return { outcome: 'timeout', position: ball.position, time: sandbox.time, closest };
+  return finish('timeout', closest);
 };
 
 interface SearchNode {
@@ -129,6 +143,7 @@ export const solveLevel = (
   let frontier: SearchNode[] = [{ position: level.tee, time: 0, shots: [] }];
   let closestApproach = V.distance(level.tee, world.hole.position);
   let simulated = 0;
+  const starsSeen = new Set<string>();
 
   for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
     const candidates: Array<SearchNode & { score: number }> = [];
@@ -145,16 +160,11 @@ export const solveLevel = (
           const sim = simulateShot(world, node.position, node.time, impulse, opts);
           simulated++;
           closestApproach = Math.min(closestApproach, sim.closest);
+          for (const id of sim.stars) starsSeen.add(id);
 
           const shots = [...node.shots, { angle, power }];
           if (sim.outcome === 'sink') {
-            return {
-              solved: true,
-              strokes: stroke,
-              shots,
-              closestApproach: 0,
-              simulated,
-            };
+            return { solved: true, strokes: stroke, shots, closestApproach: 0, simulated, starsSeen };
           }
           if (sim.outcome === 'rest') {
             candidates.push({
@@ -182,5 +192,70 @@ export const solveLevel = (
     frontier = kept;
   }
 
-  return { solved: false, strokes: 0, shots: [], closestApproach, simulated };
+  return { solved: false, strokes: 0, shots: [], closestApproach, simulated, starsSeen };
+};
+
+/**
+ * Every star id the search can reach within `maxStrokes`.
+ *
+ * Chapters unlock on star count, so a star nobody can collect is not a missed
+ * bonus — it is a hole in the progression that can strand a player short of
+ * the next chapter.
+ */
+export const reachableStars = (
+  level: LevelDef,
+  overrides: Partial<SolveOptions> = {},
+): Set<string> => {
+  // Stop at the first sink so the search keeps exploring instead of returning
+  // as soon as it finds a solution.
+  const world = compileLevel(level);
+  const opts = { ...DEFAULT_SOLVE_OPTIONS, ...overrides };
+  const seen = new Set<string>();
+  const maxPower = levelMaxPower(level);
+
+  let frontier: Array<{ position: Vec2; time: number }> = [{ position: level.tee, time: 0 }];
+
+  for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
+    const rests: Array<{ position: Vec2; time: number; score: number }> = [];
+
+    for (const node of frontier) {
+      for (let a = 0; a < opts.angleSamples; a++) {
+        const angle = (a / opts.angleSamples) * TAU;
+        for (let p = 0; p < opts.powerSamples; p++) {
+          const power =
+            opts.powerSamples === 1
+              ? 1
+              : opts.minPower + ((1 - opts.minPower) * p) / (opts.powerSamples - 1);
+          const sim = simulateShot(
+            world,
+            node.position,
+            node.time,
+            V.fromAngle(angle, power * maxPower),
+            opts,
+          );
+          for (const id of sim.stars) seen.add(id);
+          if (sim.outcome === 'rest') {
+            rests.push({ position: sim.position, time: sim.time, score: -sim.stars.length });
+          }
+        }
+      }
+    }
+
+    if (seen.size >= world.collectibles.length) break;
+
+    // Spread out: prefer rest positions far from each other, so later strokes
+    // explore new parts of the hole rather than crowding one corner.
+    rests.sort((x, y) => x.score - y.score);
+    const kept: typeof rests = [];
+    for (const candidate of rests) {
+      if (kept.length >= opts.beamWidth) break;
+      if (!kept.some((k) => V.distance(k.position, candidate.position) < opts.mergeRadius)) {
+        kept.push(candidate);
+      }
+    }
+    if (kept.length === 0) break;
+    frontier = kept;
+  }
+
+  return seen;
 };

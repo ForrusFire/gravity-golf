@@ -56,7 +56,6 @@ const ROCKY_STYLES = new Set<string>(['planet', 'moon', 'asteroid', 'sand']);
 /** Deterministic surface detail so a given planet always looks the same. */
 interface BodyDecor {
   craters: Array<{ x: number; y: number; r: number }>;
-  bands: number[];
 }
 
 export class Renderer {
@@ -444,9 +443,7 @@ export class Renderer {
         r: rng.range(0.06, 0.17) * radius,
       });
     }
-    const bands: number[] = [];
-    for (let i = 0; i < 3; i++) bands.push(rng.range(-0.7, 0.7));
-    const decor = { craters, bands };
+    const decor = { craters };
     this.decorCache.set(body.id, decor);
     return decor;
   }

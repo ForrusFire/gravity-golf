@@ -91,8 +91,6 @@ export class GameApp {
     this.input = new InputController(
       canvas,
       {
-        toWorld: (p) => this.renderer.camera.screenToWorld(p),
-        ballPosition: () => this.session?.ball.position ?? null,
         canShoot: () => this.screen === 'play' && this.session?.canShoot === true,
         onShoot: (direction, power) => this.shoot(direction, power),
         onPan: (delta) => this.pan(delta),
