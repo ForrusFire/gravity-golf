@@ -11,8 +11,10 @@ import {
   Overlay,
   helpScreen,
   isLevelUnlocked,
+  buildScorecard,
   levelSelectScreen,
   pauseScreen,
+  scorecardScreen,
   resultsScreen,
   settingsScreen,
   titleScreen,
@@ -22,7 +24,15 @@ import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { ProgressStore, type Settings } from './progress';
 import { PlaySession, type SessionEvent } from './session';
 
-type AppScreen = 'title' | 'levels' | 'play' | 'paused' | 'results' | 'settings' | 'help';
+type AppScreen =
+  | 'title'
+  | 'levels'
+  | 'play'
+  | 'paused'
+  | 'results'
+  | 'settings'
+  | 'help'
+  | 'scorecard';
 
 const TRAIL_LENGTH = 34;
 /** Trail samples are spaced by time, not frames, so it looks the same at any FPS. */
@@ -447,6 +457,7 @@ export class GameApp {
           onLevels: () => this.showLevels(),
           onSettings: () => this.showSettings('title'),
           onHelp: () => this.showHelp('title'),
+          onScorecard: () => this.showScorecard('title'),
         },
         this.progress,
         ALL_LEVELS.length,
@@ -487,6 +498,17 @@ export class GameApp {
         (patch) => this.applySettings(patch),
         () => this.leaveSubScreen(),
         () => this.confirmResetProgress(),
+      ),
+      { onEscape: () => this.leaveSubScreen(), wide: true },
+    );
+  }
+
+  private showScorecard(from: AppScreen): void {
+    this.returnScreen = from;
+    this.screen = 'scorecard';
+    this.overlay.show(
+      scorecardScreen(buildScorecard(ALL_LEVELS, this.progress), CHAPTERS, () =>
+        this.leaveSubScreen(),
       ),
       { onEscape: () => this.leaveSubScreen(), wide: true },
     );

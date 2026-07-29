@@ -99,6 +99,7 @@ export interface TitleCallbacks {
   onLevels(): void;
   onSettings(): void;
   onHelp(): void;
+  onScorecard(): void;
 }
 
 export const titleScreen = (
@@ -120,6 +121,7 @@ export const titleScreen = (
     el('div', { class: 'title__buttons' }, [
       button(completed > 0 ? 'Continue' : 'Play', callbacks.onPlay, { class: 'btn--primary' }),
       button('Select hole', callbacks.onLevels),
+      button('Scorecard', callbacks.onScorecard),
       button('How to play', callbacks.onHelp),
       button('Settings', callbacks.onSettings),
     ]),
@@ -424,6 +426,135 @@ export const settingsScreen = (
         button('Reset all progress', onResetProgress, { class: 'btn--danger' }),
       ]),
     ]),
+  ]);
+};
+
+/* ------------------------------------------------------------- scorecard */
+
+export interface ScorecardRow {
+  level: LevelDef;
+  index: number;
+  played: boolean;
+  strokes: number | null;
+  stars: number;
+  medal: Medal;
+}
+
+export const buildScorecard = (levels: LevelDef[], progress: ProgressStore): ScorecardRow[] =>
+  levels.map((level, index) => {
+    const record = progress.recordOf(level.id);
+    const played = record?.completed === true && Number.isFinite(record.bestStrokes);
+    return {
+      level,
+      index,
+      played,
+      strokes: played ? record!.bestStrokes : null,
+      stars: record?.bestStars ?? 0,
+      medal: record?.bestMedal ?? 'none',
+    };
+  });
+
+export interface ScorecardTotals {
+  holesPlayed: number;
+  holesTotal: number;
+  strokes: number;
+  /** Par for the holes actually completed, so the total is a fair comparison. */
+  par: number;
+  stars: number;
+  starsTotal: number;
+}
+
+export const scorecardTotals = (rows: ScorecardRow[]): ScorecardTotals => {
+  let holesPlayed = 0;
+  let strokes = 0;
+  let par = 0;
+  let stars = 0;
+  for (const row of rows) {
+    stars += row.stars;
+    if (!row.played || row.strokes === null) continue;
+    holesPlayed++;
+    strokes += row.strokes;
+    par += row.level.par;
+  }
+  return {
+    holesPlayed,
+    holesTotal: rows.length,
+    strokes,
+    par,
+    stars,
+    starsTotal: rows.length * 3,
+  };
+};
+
+export const scorecardScreen = (
+  rows: ScorecardRow[],
+  chapters: Chapter[],
+  onBack: () => void,
+): HTMLElement => {
+  const totals = scorecardTotals(rows);
+  const body = el('div', { class: 'card' });
+
+  for (const chapter of chapters) {
+    const chapterRows = rows.filter((row) => row.level.chapter === chapter.index);
+    if (chapterRows.length === 0) continue;
+
+    const table = el('table', { class: 'card__table' }, [
+      el('caption', { class: 'card__caption', text: `${chapter.index + 1}. ${chapter.name}` }),
+      el('thead', {}, [
+        el('tr', {}, [
+          el('th', { attrs: { scope: 'col' }, text: 'Hole' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Par' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Best' }),
+          el('th', { attrs: { scope: 'col' }, text: 'To par' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Stars' }),
+        ]),
+      ]),
+      el(
+        'tbody',
+        {},
+        chapterRows.map((row) =>
+          el('tr', { class: row.played ? '' : 'card__row--unplayed' }, [
+            el('th', { attrs: { scope: 'row' } }, [
+              el('span', { class: 'card__num', text: `${row.index + 1}` }),
+              row.level.name,
+            ]),
+            el('td', { text: String(row.level.par) }),
+            el('td', { text: row.strokes === null ? '—' : String(row.strokes) }),
+            el('td', {
+              class:
+                row.strokes === null
+                  ? ''
+                  : row.strokes < row.level.par
+                    ? 'is-under'
+                    : row.strokes > row.level.par
+                      ? 'is-over'
+                      : '',
+              text: row.strokes === null ? '—' : formatToPar(row.strokes, row.level.par),
+            }),
+            el('td', {}, [starRow(row.stars)]),
+          ]),
+        ),
+      ),
+    ]);
+    body.append(table);
+  }
+
+  const diff = totals.strokes - totals.par;
+  return el('div', { class: 'screen' }, [
+    el('div', { class: 'screen__head' }, [
+      el('h2', { text: 'Scorecard' }),
+      button('Back', onBack, { class: 'btn--ghost' }),
+    ]),
+    el('div', { class: 'card__totals' }, [
+      statBlock('Holes', `${totals.holesPlayed}/${totals.holesTotal}`),
+      statBlock('Strokes', String(totals.strokes)),
+      statBlock(
+        'To par',
+        totals.holesPlayed === 0 ? '—' : diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`,
+      ),
+      statBlock('Stars', `${totals.stars}/${totals.starsTotal}`),
+    ]),
+    body,
   ]);
 };
 

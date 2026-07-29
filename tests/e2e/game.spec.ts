@@ -246,6 +246,39 @@ test.describe('menus', () => {
     await expect(page.getByLabel('High contrast')).toBeChecked();
   });
 
+  test('the scorecard shows every hole and updates after a win', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Scorecard' }).click();
+    await expect(page.getByRole('heading', { name: 'Scorecard' })).toBeVisible();
+
+    // Nothing played yet: every hole shows a dash for its best score.
+    const firstRow = page.locator('.card__table tbody tr').first();
+    await expect(firstRow).toContainText('First Light');
+    await expect(page.locator('.card__totals')).toContainText('0/30');
+
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: /^(Play|Continue)$/ }).click();
+    await page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          ball: { position: { x: number; y: number } };
+          world: { hole: { position: { x: number; y: number }; radius: number } };
+        } | null;
+      };
+      const s = app.session!;
+      s.ball.position = {
+        x: s.world.hole.position.x,
+        y: s.world.hole.position.y - s.world.hole.radius * 0.4,
+      };
+    });
+    await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'All holes' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Scorecard' }).click();
+    await expect(page.locator('.card__totals')).toContainText('1/30');
+  });
+
   test('help screen explains the controls', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'How to play' }).click();
