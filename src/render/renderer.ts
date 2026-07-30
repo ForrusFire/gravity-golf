@@ -1043,9 +1043,6 @@ export class Renderer {
     const position = holePositionAt(world);
     ctx.save();
 
-    // A cup that moves without a visible path is not a puzzle, it is a guess.
-    if (world.hole.motion) this.drawHolePath(ctx, world, palette);
-
     // A cup that will not accept the ball yet has to say so before the player
     // wastes a stroke finding out. Amber rather than green, plus a bar across
     // the mouth: the state is legible without relying on colour.
@@ -1056,6 +1053,11 @@ export class Renderer {
     const locked = owed > 0;
     const rim = locked ? palette.collectible : palette.holeRim;
     const glow = locked ? '255, 210, 87' : '102, 230, 184';
+
+    // A cup that moves without a visible path is not a puzzle, it is a guess.
+    if (world.hole.motion) this.drawHolePath(ctx, world, palette);
+    // Likewise a cup that refuses every heading but one.
+    if (world.hole.approach) this.drawApproachCone(ctx, position, radius, world.hole.approach, rim);
 
     const pulse = 1 + Math.sin(time * 2.4) * 0.06;
     const grad = ctx.createRadialGradient(
@@ -1137,6 +1139,54 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
+    ctx.restore();
+  }
+
+  /**
+   * The mouth of a directional cup: a wedge on the side the ball has to come
+   * from, with an arrow through it showing the way in.
+   */
+  private drawApproachCone(
+    ctx: CanvasRenderingContext2D,
+    position: Vec2,
+    radius: number,
+    approach: { direction: Vec2; tolerance: number },
+    color: string,
+  ): void {
+    const heading = Math.atan2(approach.direction.y, approach.direction.x);
+    // The mouth faces back along the heading: that is the side you arrive from.
+    const mouth = heading + Math.PI;
+    const inner = radius * 1.25;
+    const outer = radius * 2.9;
+
+    ctx.save();
+    ctx.translate(position.x, position.y);
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.16;
+    ctx.beginPath();
+    ctx.arc(0, 0, outer, mouth - approach.tolerance, mouth + approach.tolerance);
+    ctx.arc(0, 0, inner, mouth + approach.tolerance, mouth - approach.tolerance, true);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // An arrow along the heading, so the wedge reads as "in" not "out".
+    ctx.rotate(heading);
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-outer * 0.86, 0);
+    ctx.lineTo(-inner * 0.9, 0);
+    ctx.moveTo(-inner * 1.34, -6);
+    ctx.lineTo(-inner * 0.9, 0);
+    ctx.lineTo(-inner * 1.34, 6);
+    ctx.stroke();
     ctx.restore();
   }
 

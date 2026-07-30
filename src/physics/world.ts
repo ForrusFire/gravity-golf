@@ -42,6 +42,18 @@ export interface Hole {
    * bonus pickups into the objective on holes that want it.
    */
   requiresStars?: number;
+  /**
+   * A cup that only accepts the ball arriving on a particular heading, like a
+   * letterbox. Turns "get there slowly" into "get there slowly *from there*".
+   */
+  approach?: ApproachSpec;
+}
+
+export interface ApproachSpec {
+  /** Unit vector the ball must be travelling along to drop in. */
+  direction: Vec2;
+  /** Half-angle of the accepted cone, in radians. */
+  tolerance: number;
 }
 
 export interface Collectible {
@@ -681,10 +693,16 @@ const checkHole = (
       return false;
     }
   }
-  runtime.inLockedCup = false;
+  if (dist > hole.radius) runtime.inLockedCup = false;
+
+  // Computed once and used for both the funnel and the capture. A directional
+  // cup that still sucks at a ball it will not accept would shake a trapped ball
+  // about until its heading happened to line up, which beats the mechanic on a
+  // technicality. The mouth pulls only from the side it opens onto.
+  const accepted = approachAccepted(hole.approach, ball, world, speed);
 
   const funnelRadius = hole.radius * 2.4;
-  if (dist < funnelRadius) {
+  if (accepted && dist < funnelRadius) {
     // Rim funnel: strengthens as the ball nears the centre, and fades out as
     // the ball gets faster. A slow ball that grazes the rim drops in; a fast
     // one is barely deflected and skips straight over, which is the whole
@@ -699,13 +717,38 @@ const checkHole = (
   }
 
   if (dist <= hole.radius) {
-    if (speed <= hole.captureSpeed) {
+    if (speed <= hole.captureSpeed && accepted) {
       events.push({ type: 'sink', position: holeAt, speed });
       return true;
     }
-    events.push({ type: 'lipout', position: ball.position, speed });
+    // Edge-triggered like the sealed cup: a ball that comes to rest against a
+    // directional cup overlaps it for hundreds of steps, and one rejection per
+    // arrival is the honest signal rather than a stream of them.
+    if (!runtime.inLockedCup) events.push({ type: 'lipout', position: ball.position, speed });
+    runtime.inLockedCup = true;
   }
   return false;
+};
+
+/**
+ * Whether the ball is arriving on the heading a directional cup demands.
+ *
+ * A ball creeping about inside the cup is not "arriving" from anywhere, so it is
+ * refused rather than let in on a technicality — otherwise nudging it around the
+ * rim until the direction happened to line up would beat the mechanic.
+ */
+const approachAccepted = (
+  approach: ApproachSpec | undefined,
+  ball: Ball,
+  world: World,
+  speed: number,
+): boolean => {
+  if (!approach) return true;
+  if (speed < world.config.restSpeed) return false;
+  const relative = V.sub(ball.velocity, holeVelocityAt(world));
+  const heading = V.normalize(relative);
+  const wanted = V.normalize(approach.direction);
+  return V.dot(heading, wanted) >= Math.cos(approach.tolerance);
 };
 
 const checkBounds = (world: World, ball: Ball, events: SimEvent[]): boolean => {

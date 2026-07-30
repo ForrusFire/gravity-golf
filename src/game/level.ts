@@ -18,7 +18,12 @@ import {
   type SwitchSpec,
   type Zone,
 } from '../physics/types';
-import { createWorld, type BoundsMode, type World } from '../physics/world';
+import {
+  createWorld,
+  type ApproachSpec,
+  type BoundsMode,
+  type World,
+} from '../physics/world';
 
 /** Authored, serialisable description of a hole. Compiled into a `World`. */
 export interface LevelDef {
@@ -37,6 +42,8 @@ export interface LevelDef {
      * game do another.
      */
     motion?: MotionSpec;
+    /** Only accepts the ball arriving on this heading. See `ApproachSpec`. */
+    approach?: ApproachSpec;
     radius?: number;
     captureSpeed?: number;
     /** Stars needed in hand before the cup will accept the ball. */
@@ -100,6 +107,7 @@ export const compileLevel = (level: LevelDef): World =>
     hole: {
       position: level.hole.position,
       motion: level.hole.motion,
+      approach: level.hole.approach,
       radius: levelHoleRadius(level),
       captureSpeed: level.hole.captureSpeed ?? DEFAULT_CAPTURE_SPEED,
       requiresStars: level.hole.requiresStars ?? 0,
@@ -148,6 +156,14 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
 
   const holeRadius = levelHoleRadius(level);
   if (holeRadius < BALL_RADIUS + 2) err(`hole radius ${holeRadius} is too small for the ball`);
+
+  if (level.hole.approach) {
+    const { direction, tolerance } = level.hole.approach;
+    if (V.length(direction) < 1e-6) err('hole approach has no direction');
+    // Wider than a right angle is not a letterbox, it is a hole with a comment.
+    if (tolerance <= 0) err('hole approach accepts no heading at all');
+    else if (tolerance >= Math.PI / 2) warn('hole approach is so wide it barely constrains anything');
+  }
 
   if (level.hole.motion) {
     // Authored position and path start must agree, or the level data reads as a

@@ -720,3 +720,113 @@ describe('pulsing bodies', () => {
     expect(noPeriod.some((i) => i.message.includes('no period'))).toBe(true);
   });
 });
+
+describe('directional cups', () => {
+  /** A cup at the origin that only accepts a ball travelling downward. */
+  const letterbox = (tolerance = 0.6) =>
+    makeWorld({
+      hole: {
+        position: V.vec(0, 0),
+        radius: 20,
+        captureSpeed: 300,
+        approach: { direction: V.vec(0, 1), tolerance },
+      },
+    });
+
+  it('accepts the ball on the heading it asks for', () => {
+    const world = letterbox();
+    const [ball, runtime] = shoot(V.vec(0, -300), V.vec(0, 300), 200);
+    run(world, ball, runtime, 2);
+    expect(runtime.sunk).toBe(true);
+  });
+
+  it('refuses the same speed from the wrong side', () => {
+    const world = letterbox();
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 200);
+    const events = run(world, ball, runtime, 2);
+    expect(runtime.sunk).toBe(false);
+    expect(events.some((e) => e.type === 'lipout')).toBe(true);
+  });
+
+  it('honours the tolerance either side of the heading', () => {
+    // Just inside the cone drops; just outside it does not.
+    for (const [angle, expected] of [
+      [Math.PI / 2 - 0.4, true],
+      [Math.PI / 2 + 0.4, true],
+      [Math.PI / 2 - 0.9, false],
+    ] as const) {
+      const world = letterbox(0.6);
+      const ball = createBall(V.vec(-Math.cos(angle) * 300, -Math.sin(angle) * 300), BALL_RADIUS);
+      const runtime = createBallRuntime();
+      launchBall(ball, runtime, V.mul(V.fromAngle(angle), 200));
+      run(world, ball, runtime, 3);
+      expect(runtime.sunk, `angle ${angle}`).toBe(expected);
+    }
+  });
+
+  it('will not let a ball creep around the rim until the angle lines up', () => {
+    // Nudging a nearly-stationary ball about inside the cup would beat the
+    // mechanic on a technicality, so an arrival has to actually be an arrival.
+    const world = letterbox();
+    const ball = createBall(V.vec(0, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    ball.velocity = V.vec(0, 1);
+    ball.atRest = false;
+    run(world, ball, runtime, 2);
+    expect(runtime.sunk).toBe(false);
+  });
+
+  it('complains once per arrival rather than once per step', () => {
+    // A ball that settles against a cup it cannot enter overlaps it for hundreds
+    // of steps; one rejection is the signal, a stream of them is noise.
+    const world = makeWorld({
+      hole: {
+        position: V.vec(0, 0),
+        radius: 26,
+        captureSpeed: 300,
+        approach: { direction: V.vec(0, 1), tolerance: 0.4 },
+      },
+      uniformGravity: V.vec(-260, 0),
+    });
+    const ball = createBall(V.vec(10, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    ball.velocity = V.vec(-40, 0);
+    ball.atRest = false;
+    const events = run(world, ball, runtime, 3);
+    expect(runtime.sunk).toBe(false);
+    expect(events.filter((e) => e.type === 'lipout').length).toBeLessThanOrEqual(2);
+  });
+
+  it('leaves an ordinary cup taking the ball from anywhere', () => {
+    const world = makeWorld({
+      hole: { position: V.vec(0, 0), radius: 20, captureSpeed: 300 },
+    });
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 200);
+    run(world, ball, runtime, 2);
+    expect(runtime.sunk).toBe(true);
+  });
+
+  it('rejects an approach that accepts nothing or points nowhere', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: { position: V.vec(200, 0) },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    };
+    const nowhere = validateLevel({
+      ...base,
+      hole: { position: V.vec(200, 0), approach: { direction: V.ZERO, tolerance: 0.5 } },
+    });
+    expect(nowhere.some((i) => i.message.includes('no direction'))).toBe(true);
+
+    const nothing = validateLevel({
+      ...base,
+      hole: { position: V.vec(200, 0), approach: { direction: V.vec(0, 1), tolerance: 0 } },
+    });
+    expect(nothing.some((i) => i.message.includes('no heading at all'))).toBe(true);
+  });
+});

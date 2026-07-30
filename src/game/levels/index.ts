@@ -10,6 +10,7 @@ import { CHAPTER_8 } from './chapter8';
 import { CHAPTER_9 } from './chapter9';
 import { CHAPTER_10 } from './chapter10';
 import { CHAPTER_11 } from './chapter11';
+import { CHAPTER_12 } from './chapter12';
 
 export interface Chapter {
   index: number;
@@ -97,6 +98,13 @@ export const CHAPTERS: Chapter[] = [
     subtitle: 'Barriers that blink on a clock of their own',
     starsRequired: 128,
     levels: CHAPTER_11,
+  },
+  {
+    index: 11,
+    name: 'Approach',
+    subtitle: 'Cups that only take the ball one way',
+    starsRequired: 146,
+    levels: CHAPTER_12,
   },
 ];
 

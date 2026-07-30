@@ -21,6 +21,8 @@ npm run dev      # play it at http://localhost:5173
 - **Three stars** are hidden on every hole. They only count if the ball
   survives the shot that collected them.
 - **Arrive slowly.** A ball that reaches the cup too fast rims out.
+- **Some cups have a mouth.** A wedge drawn on the cup is the side you have to
+  arrive from; it will not funnel you in from anywhere else.
 - **Some cups move**, along a dashed track that shows the whole lap. What counts
   is your speed *relative to the cup* — parking on the rails and letting it drive
   over you is a lip-out, not a hole in one.
@@ -62,7 +64,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-66 holes across eleven chapters, each introducing one idea at a time:
+72 holes across twelve chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -77,6 +79,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 9. Launch Control | Boost rings — the route becomes a relay |
 | 10. Moving Targets | The cup itself travels; the puzzle becomes *when* |
 | 11. Rhythm | Barriers blinking on a clock that waits for nobody |
+| 12. Approach | Cups that only take the ball from one direction |
 
 Finish every hole and the course closes with a card of the whole run: total
 strokes against par, holes under par, stars, feats and time.
