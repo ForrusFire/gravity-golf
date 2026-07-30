@@ -1,6 +1,8 @@
-import { clamp } from '../core/math';
+import { TAU, angleDelta, clamp } from '../core/math';
 import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
+import { bodyShapeAt, closestSurfacePoint, shapeCenter, shapeRadius } from '../physics/geometry';
+import { MATERIALS } from '../physics/types';
 import {
   predictTrajectory,
   type Trajectory,
@@ -48,6 +50,89 @@ export type SessionEvent =
 
 export type Medal = 'ace' | 'gold' | 'silver' | 'bronze' | 'none';
 
+/** A stylish way to finish a hole. Recognising these rewards flair. */
+export type FeatId = 'orbit' | 'clean' | 'ricochet' | 'longRange' | 'grazer' | 'allStars';
+
+export interface Feat {
+  id: FeatId;
+  label: string;
+  description: string;
+}
+
+export const FEATS: Record<FeatId, Feat> = {
+  orbit: {
+    id: 'orbit',
+    label: 'Full Orbit',
+    description: 'Went all the way around a body before sinking',
+  },
+  clean: {
+    id: 'clean',
+    label: 'Clean Sink',
+    description: 'Sank it without touching a single surface',
+  },
+  ricochet: {
+    id: 'ricochet',
+    label: 'Ricochet',
+    description: 'Sank it after four or more bounces',
+  },
+  longRange: {
+    id: 'longRange',
+    label: 'Long Range',
+    description: 'Sank it from over 1200 units away',
+  },
+  grazer: {
+    id: 'grazer',
+    label: 'Grazer',
+    description: 'Skimmed a hazard on the way in',
+  },
+  allStars: {
+    id: 'allStars',
+    label: 'Perfect Run',
+    description: 'Collected all three stars',
+  },
+};
+
+/** A shot as taken, enough to replay it exactly. */
+export interface ShotRecord {
+  /** Radians. */
+  angle: number;
+  /** 0..1. */
+  power: number;
+}
+
+/** Everything undo needs to put a hole back the way it was. */
+interface Snapshot {
+  ballPosition: Vec2;
+  worldTime: number;
+  strokes: number;
+  playTime: number;
+  longestShot: number;
+  safePosition: Vec2;
+  banked: string[];
+  collected: string[];
+}
+
+interface FeatTracker {
+  /** Radians swept around each gravity body, keyed by body id. */
+  swept: Map<string, number>;
+  /** Last measured angle to each gravity body. */
+  lastAngle: Map<string, number>;
+  bounces: number;
+  touched: boolean;
+  /** Closest approach to a deadly body, in units of that body's radius. */
+  closestHazard: number;
+  distance: number;
+}
+
+const newFeatTracker = (): FeatTracker => ({
+  swept: new Map(),
+  lastAngle: new Map(),
+  bounces: 0,
+  touched: false,
+  closestHazard: Infinity,
+  distance: 0,
+});
+
 export interface HoleResult {
   levelId: string;
   strokes: number;
@@ -58,6 +143,10 @@ export interface HoleResult {
   time: number;
   /** Longest single shot in world units. */
   longestShot: number;
+  /** Style awards earned on the shot that sank it. */
+  feats: FeatId[];
+  /** The shots taken, so a best run can be replayed as a ghost. */
+  shots: ShotRecord[];
 }
 
 export const medalFor = (strokes: number, par: number): Medal => {
@@ -132,12 +221,69 @@ export class PlaySession {
   private accumulator = 0;
   private readonly simEvents: SimEvent[] = [];
 
+  /** One entry per shot taken, for undo. */
+  private history: Snapshot[] = [];
+  /** The shots taken so far, so a completed run can be replayed as a ghost. */
+  private shots: ShotRecord[] = [];
+  /** Style tracking for the current shot. */
+  private tracker = newFeatTracker();
+  private earnedFeats: FeatId[] = [];
+
   constructor(level: LevelDef) {
     this.level = level;
     this.world = compileLevel(level);
     this.ball = createBall(settledTee(level), BALL_RADIUS);
     this.runtime = createBallRuntime();
     this.safePosition = this.ball.position;
+  }
+
+  /** True when there is a previous shot to take back. */
+  get canUndo(): boolean {
+    return this.history.length > 0 && (this.state === 'aiming' || this.state === 'flying');
+  }
+
+  /** The shots taken so far. Copied, so callers cannot mutate history. */
+  get shotList(): ShotRecord[] {
+    return this.shots.map((shot) => ({ ...shot }));
+  }
+
+  /**
+   * Takes back the last shot, restoring the ball, the clock, the stroke count
+   * and any stars it collected.
+   *
+   * This is a convenience, not an advantage: restarting the hole was already
+   * free, so undo only saves replaying the shots that came before. Making it
+   * free keeps players experimenting instead of grinding.
+   */
+  undo(): boolean {
+    const snapshot = this.history.pop();
+    if (!snapshot) return false;
+
+    this.ball = createBall(snapshot.ballPosition, BALL_RADIUS);
+    this.ball.atRest = true;
+    this.runtime = createBallRuntime();
+    this.world.time = snapshot.worldTime;
+    this.world.shapeCache = undefined;
+    for (const item of this.world.collectibles) {
+      item.collected = snapshot.collected.includes(item.id);
+    }
+
+    this.strokes = snapshot.strokes;
+    this.playTime = snapshot.playTime;
+    this.longestShot = snapshot.longestShot;
+    this.safePosition = snapshot.safePosition;
+    this.bankedStars = new Set(snapshot.banked);
+    this.pendingStars = [];
+    this.shots = this.shots.slice(0, snapshot.strokes);
+    this.earnedFeats = [];
+    this.tracker = newFeatTracker();
+
+    this.state = 'aiming';
+    this.shotTimer = 0;
+    this.respawnTimer = 0;
+    this.accumulator = 0;
+    this.result = null;
+    return true;
   }
 
   get starCount(): number {
@@ -174,10 +320,24 @@ export class PlaySession {
     const clamped = clamp(power, 0, 1);
     if (clamped <= 0.001) return [];
 
+    // Snapshot before mutating anything, so undo can put it all back.
+    this.history.push({
+      ballPosition: this.ball.position,
+      worldTime: this.world.time,
+      strokes: this.strokes,
+      playTime: this.playTime,
+      longestShot: this.longestShot,
+      safePosition: this.safePosition,
+      banked: [...this.bankedStars],
+      collected: this.world.collectibles.filter((c) => c.collected).map((c) => c.id),
+    });
+
     this.strokes++;
     this.safePosition = this.ball.position;
     this.shotTimer = 0;
     this.state = 'flying';
+    this.tracker = newFeatTracker();
+    this.shots.push({ angle: V.angleOf(dir), power: clamped });
     launchBall(this.ball, this.runtime, shotImpulse(dir, clamped, this.maxPower));
 
     return [{ type: 'shot', power: clamped, direction: dir, strokes: this.strokes }];
@@ -225,6 +385,7 @@ export class PlaySession {
       this.accumulator -= step;
       this.simEvents.length = 0;
       stepWorld(this.world, this.ball, this.runtime, this.simEvents);
+      this.trackStyle();
       this.drainSimEvents(events);
       if (this.state !== 'flying') break;
     }
@@ -255,14 +416,72 @@ export class PlaySession {
     this.pendingStars = [];
     this.bankedStars.clear();
     this.accumulator = 0;
+    this.history = [];
+    this.shots = [];
+    this.earnedFeats = [];
+    this.tracker = newFeatTracker();
   }
 
   /* ------------------------------------------------------------- internals */
+
+  /**
+   * Accumulates the shape of the current shot: how far it has swung around each
+   * body, whether it has touched anything, and how close it came to a hazard.
+   * Read once on sinking to work out which style awards it earned.
+   */
+  private trackStyle(): void {
+    if (this.state !== 'flying') return;
+    const tracker = this.tracker;
+    tracker.distance = this.runtime.distance;
+    if (this.runtime.airTime === 0) tracker.touched = true;
+
+    for (const body of this.world.bodies) {
+      const shape = bodyShapeAt(body, this.world.time);
+      const centre = shapeCenter(shape);
+      const angle = Math.atan2(this.ball.position.y - centre.y, this.ball.position.x - centre.x);
+      const previous = tracker.lastAngle.get(body.id);
+      tracker.lastAngle.set(body.id, angle);
+
+      if (body.gravity && body.gravity.strength > 0 && previous !== undefined) {
+        // Signed, so swinging out and back cancels instead of counting twice.
+        const swept = (tracker.swept.get(body.id) ?? 0) + angleDelta(previous, angle);
+        tracker.swept.set(body.id, swept);
+      }
+
+      if (MATERIALS[body.material].deadly) {
+        const radius = Math.max(shapeRadius(shape), 1);
+        const surfaceGap = closestSurfacePoint(shape, this.ball.position).distance;
+        tracker.closestHazard = Math.min(tracker.closestHazard, surfaceGap / radius);
+      }
+    }
+  }
+
+  /** Which style awards the shot that just sank the ball earned. */
+  private collectFeats(): FeatId[] {
+    const feats: FeatId[] = [];
+    const tracker = this.tracker;
+
+    for (const swept of tracker.swept.values()) {
+      if (Math.abs(swept) >= TAU) {
+        feats.push('orbit');
+        break;
+      }
+    }
+    if (!tracker.touched) feats.push('clean');
+    if (tracker.bounces >= 4) feats.push('ricochet');
+    if (tracker.distance >= 1200) feats.push('longRange');
+    // Within a third of a hazard's own radius of its surface counts as a graze.
+    if (tracker.closestHazard <= 0.33) feats.push('grazer');
+    if (this.bankedStars.size === this.totalStars && this.totalStars > 0) feats.push('allStars');
+
+    return feats;
+  }
 
   private drainSimEvents(out: SessionEvent[]): void {
     for (const event of this.simEvents) {
       switch (event.type) {
         case 'bounce':
+          this.tracker.bounces++;
           out.push({
             type: 'bounce',
             point: event.point,
@@ -326,6 +545,7 @@ export class PlaySession {
           // than a hole in one, so the floor is one.
           const strokes = Math.max(1, this.strokes);
           this.strokes = strokes;
+          this.earnedFeats = this.collectFeats();
           this.result = {
             levelId: this.level.id,
             strokes,
@@ -334,6 +554,8 @@ export class PlaySession {
             medal: medalFor(strokes, this.level.par),
             time: this.playTime,
             longestShot: this.longestShot,
+            feats: this.earnedFeats,
+            shots: this.shotList,
           };
           out.push({
             type: 'sunk',

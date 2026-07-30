@@ -184,6 +184,36 @@ test.describe('playing a hole', () => {
     expect(saved.levels?.['c1-1']?.completed).toBe(true);
   });
 
+  test('undo takes back a shot and is disabled with nothing to undo', async ({ page }) => {
+    await startGame(page);
+    const undo = page.getByRole('button', { name: 'Take back last shot' });
+    await expect(undo).toBeDisabled();
+
+    const before = (await sessionState(page))!;
+    await shoot(page, 1, -0.3, 0.5);
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(1);
+    await expect(undo).toBeEnabled();
+
+    await undo.click();
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(0);
+    const after = (await sessionState(page))!;
+    // Back where it started, give or take the sub-unit settling a resting ball
+    // does as it nestles into the surface.
+    expect(Math.hypot(after.ball.x - before.ball.x, after.ball.y - before.ball.y)).toBeLessThan(2);
+    expect(after.canShoot).toBe(true);
+    await expect(undo).toBeDisabled();
+  });
+
+  test('the Z key takes back a shot', async ({ page }) => {
+    await startGame(page);
+    await shoot(page, 1, -0.3, 0.5);
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(1);
+
+    await page.locator('canvas').focus();
+    await page.keyboard.press('KeyZ');
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(0);
+  });
+
   test('restart resets the stroke count', async ({ page }) => {
     await startGame(page);
     await shoot(page, 1, -0.3, 0.5);
@@ -239,7 +269,7 @@ test.describe('menus', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Settings' }).click();
     await page.getByLabel('High contrast').check();
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
 
     await page.reload();
     await page.getByRole('button', { name: 'Settings' }).click();
@@ -256,7 +286,7 @@ test.describe('menus', () => {
     await expect(firstRow).toContainText('First Light');
     await expect(page.locator('.card__totals')).toContainText('0/30');
 
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: /^(Play|Continue)$/ }).click();
     await page.evaluate(() => {
       const app = window.gravityGolf as unknown as {
@@ -274,7 +304,7 @@ test.describe('menus', () => {
     await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole('button', { name: 'All holes' }).click();
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Scorecard' }).click();
     await expect(page.locator('.card__totals')).toContainText('1/30');
   });
@@ -303,12 +333,33 @@ test.describe('menus', () => {
     expect(cached.length).toBe(1);
   });
 
+  test('the scorecard lists feats, locked until earned', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Scorecard' }).click();
+    await expect(page.getByRole('heading', { name: /^Feats/ })).toBeVisible();
+    await expect(page.locator('.feat')).toHaveCount(6);
+    // A fresh save has earned none.
+    await expect(page.locator('.feat--earned')).toHaveCount(0);
+  });
+
+  test('ball skins are locked behind stars and selectable once earned', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Settings' }).click();
+
+    const skins = page.locator('.skin');
+    await expect(skins).toHaveCount(5);
+    // Only the default is available with no stars.
+    await expect(skins.nth(0)).toBeEnabled();
+    await expect(skins.nth(1)).toBeDisabled();
+    await expect(skins.nth(0)).toHaveClass(/skin--active/);
+  });
+
   test('help screen explains the controls', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'How to play' }).click();
     await expect(page.getByRole('heading', { name: 'How to play' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Gravity' })).toBeVisible();
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByRole('heading', { name: /GRAVITY/ })).toBeVisible();
   });
 });

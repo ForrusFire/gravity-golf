@@ -20,6 +20,8 @@ export interface InputCallbacks {
   onCancel(): void;
   /** Fired on the first interaction of any kind, to unlock audio. */
   onFirstInteraction?(): void;
+  /** Fired on every interaction, e.g. to cut short an intro animation. */
+  onInteract?(): void;
 }
 
 export interface InputConfig {
@@ -192,6 +194,7 @@ export class InputController {
   }
 
   private firstInteraction(): void {
+    this.callbacks.onInteract?.();
     if (this.interacted) return;
     this.interacted = true;
     this.callbacks.onFirstInteraction?.();

@@ -1,8 +1,10 @@
-import type { HoleResult, Medal } from './session';
+import { FEATS, type FeatId, type HoleResult, type Medal, type ShotRecord } from './session';
 
 export interface LevelRecord {
   /** Fewest strokes ever taken on this hole. */
   bestStrokes: number;
+  /** The shots of the best run, replayed as a ghost on later attempts. */
+  bestShots: ShotRecord[];
   /** Most stars collected in a single completed run. */
   bestStars: number;
   bestMedal: Medal;
@@ -25,12 +27,18 @@ export interface Settings {
   /** 'slingshot' pulls back from the ball; 'direct' aims at the cursor. */
   aimMode: 'slingshot' | 'direct';
   leftHanded: boolean;
+  /** Race a translucent replay of your best run on this hole. */
+  showGhost: boolean;
+  /** Chosen ball appearance. Falls back to the default when not yet unlocked. */
+  ballSkin: string;
 }
 
 export interface ProgressData {
   version: number;
   levels: Record<string, LevelRecord>;
   settings: Settings;
+  /** Style awards earned at least once, across every hole. */
+  feats: FeatId[];
   /** Cumulative strokes across all completed holes. */
   totalStrokes: number;
   totalShots: number;
@@ -51,12 +59,15 @@ export const DEFAULT_SETTINGS: Settings = {
   showGravityField: true,
   aimMode: 'slingshot',
   leftHanded: false,
+  showGhost: true,
+  ballSkin: 'classic',
 };
 
 export const emptyProgress = (): ProgressData => ({
   version: SCHEMA_VERSION,
   levels: {},
   settings: { ...DEFAULT_SETTINGS },
+  feats: [],
   totalStrokes: 0,
   totalShots: 0,
   totalDeaths: 0,
@@ -69,6 +80,19 @@ export const betterMedal = (a: Medal, b: Medal): Medal => (MEDAL_RANK[a] >= MEDA
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** Keeps only well-formed shots; a corrupt ghost must not break playback. */
+const sanitizeShots = (raw: unknown): ShotRecord[] => {
+  if (!Array.isArray(raw)) return [];
+  const shots: ShotRecord[] = [];
+  for (const entry of raw.slice(0, 24)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const shot = entry as Partial<ShotRecord>;
+    if (!isFiniteNumber(shot.angle) || !isFiniteNumber(shot.power)) continue;
+    shots.push({ angle: shot.angle, power: Math.max(0, Math.min(1, shot.power)) });
+  }
+  return shots;
+};
+
 const sanitizeRecord = (raw: unknown): LevelRecord | null => {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Partial<LevelRecord>;
@@ -79,6 +103,7 @@ const sanitizeRecord = (raw: unknown): LevelRecord | null => {
   if (!hasStrokes && attempts === 0) return null;
   return {
     bestStrokes: hasStrokes ? Math.floor(r.bestStrokes as number) : Infinity,
+    bestShots: sanitizeShots(r.bestShots),
     bestStars: isFiniteNumber(r.bestStars) ? Math.max(0, Math.min(3, Math.floor(r.bestStars))) : 0,
     bestMedal: (r.bestMedal && r.bestMedal in MEDAL_RANK ? r.bestMedal : 'none') as Medal,
     bestTime: isFiniteNumber(r.bestTime) && r.bestTime > 0 ? r.bestTime : Infinity,
@@ -101,6 +126,8 @@ const sanitizeSettings = (raw: unknown): Settings => {
     showGravityField: s.showGravityField !== false,
     aimMode: s.aimMode === 'direct' ? 'direct' : 'slingshot',
     leftHanded: s.leftHanded === true,
+    showGhost: s.showGhost !== false,
+    ballSkin: typeof s.ballSkin === 'string' ? s.ballSkin : DEFAULT_SETTINGS.ballSkin,
   };
 };
 
@@ -131,6 +158,13 @@ export const parseProgress = (raw: string | null): ProgressData => {
     }
   }
 
+  if (Array.isArray(data.feats)) {
+    const known = new Set(Object.keys(FEATS));
+    result.feats = data.feats.filter(
+      (id): id is FeatId => typeof id === 'string' && known.has(id),
+    );
+  }
+
   result.totalStrokes = isFiniteNumber(data.totalStrokes) ? Math.max(0, data.totalStrokes) : 0;
   result.totalShots = isFiniteNumber(data.totalShots) ? Math.max(0, data.totalShots) : 0;
   result.totalDeaths = isFiniteNumber(data.totalDeaths) ? Math.max(0, data.totalDeaths) : 0;
@@ -141,9 +175,13 @@ export const parseProgress = (raw: string | null): ProgressData => {
 /** Folds a completed hole into the saved record, keeping the player's bests. */
 export const applyResult = (data: ProgressData, result: HoleResult): ProgressData => {
   const previous = data.levels[result.levelId];
+  // The ghost should show the run worth beating, so the shot list travels with
+  // the stroke record rather than being overwritten by the latest attempt.
+  const improved = !previous || result.strokes < previous.bestStrokes;
   const record: LevelRecord = previous
     ? {
         bestStrokes: Math.min(previous.bestStrokes, result.strokes),
+        bestShots: improved ? result.shots : previous.bestShots,
         bestStars: Math.max(previous.bestStars, result.stars),
         bestMedal: betterMedal(previous.bestMedal, result.medal),
         bestTime: Math.min(previous.bestTime, result.time),
@@ -152,6 +190,7 @@ export const applyResult = (data: ProgressData, result: HoleResult): ProgressDat
       }
     : {
         bestStrokes: result.strokes,
+        bestShots: result.shots,
         bestStars: result.stars,
         bestMedal: result.medal,
         bestTime: result.time,
@@ -159,9 +198,12 @@ export const applyResult = (data: ProgressData, result: HoleResult): ProgressDat
         attempts: 1,
       };
 
+  const feats = [...new Set([...data.feats, ...result.feats])];
+
   return {
     ...data,
     levels: { ...data.levels, [result.levelId]: record },
+    feats,
     totalStrokes: data.totalStrokes + result.strokes,
     totalPlayTime: data.totalPlayTime + result.time,
   };
@@ -220,6 +262,16 @@ export class ProgressStore {
     return this.data.settings;
   }
 
+  /** Style awards earned at least once. */
+  earnedFeats(): FeatId[] {
+    return [...this.data.feats];
+  }
+
+  /** The best run's shots for a hole, for the ghost to replay. */
+  bestShots(levelId: string): ShotRecord[] {
+    return this.data.levels[levelId]?.bestShots ?? [];
+  }
+
   recordOf(levelId: string): LevelRecord | undefined {
     return this.data.levels[levelId];
   }
@@ -269,6 +321,7 @@ export class ProgressStore {
     } else {
       this.data.levels[levelId] = {
         bestStrokes: Infinity,
+        bestShots: [],
         bestStars: 0,
         bestMedal: 'none',
         bestTime: Infinity,

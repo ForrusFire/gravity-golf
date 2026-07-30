@@ -16,6 +16,7 @@ import { Camera } from './camera';
 import { ParticleSystem } from './particles';
 import { colorsForBody, powerColor, type Palette } from './palette';
 import { Starfield } from './starfield';
+import type { BallSkin } from '../game/skins';
 
 export interface AimState {
   origin: Vec2;
@@ -45,6 +46,10 @@ export interface Scene {
   /** Seconds since the level started, for animation phase. */
   time: number;
   levelId: string;
+  /** Ball appearance. */
+  skin: BallSkin;
+  /** A replay of the player's best run, drawn behind the live ball. */
+  ghost: { position: Vec2; trail: Vec2[] } | null;
 }
 
 const overlaps = (a: Aabb, b: Aabb): boolean =>
@@ -132,9 +137,12 @@ export class Renderer {
     this.drawCollectibles(ctx, scene, options.palette);
     this.particles.draw(ctx);
 
+    // The ghost goes underneath, so it can never be mistaken for the live ball.
+    if (scene.ghost) this.drawGhost(ctx, scene.ghost, scene.ballRadius, options.palette);
+
     if (scene.ballVisible) {
-      this.drawTrail(ctx, scene.trail, scene.ballRadius, options.palette);
-      this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, options.palette);
+      this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail);
+      this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
     }
 
     if (scene.aim && options.aimAssist > 0) {
@@ -764,11 +772,11 @@ export class Renderer {
     ctx: CanvasRenderingContext2D,
     trail: Vec2[],
     ballRadius: number,
-    palette: Palette,
+    color: string,
   ): void {
     if (trail.length < 2) return;
     ctx.save();
-    ctx.strokeStyle = palette.trail;
+    ctx.strokeStyle = color;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (let i = 1; i < trail.length; i++) {
@@ -788,7 +796,7 @@ export class Renderer {
     position: Vec2,
     radius: number,
     time: number,
-    palette: Palette,
+    skin: BallSkin,
   ): void {
     ctx.save();
     const glow = ctx.createRadialGradient(
@@ -799,7 +807,7 @@ export class Renderer {
       position.y,
       radius * 3.4,
     );
-    glow.addColorStop(0, palette.ballGlow);
+    glow.addColorStop(0, skin.glow);
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
@@ -814,18 +822,54 @@ export class Renderer {
       position.y,
       radius,
     );
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(1, '#b9c6dd');
+    grad.addColorStop(0, skin.highlight);
+    grad.addColorStop(1, skin.body);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, TAU);
     ctx.fill();
 
     ctx.globalAlpha = 0.55 + Math.sin(time * 4) * 0.12;
-    ctx.strokeStyle = palette.accent;
+    ctx.strokeStyle = skin.glow;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius + 1.5, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The player's best run, drawn as a hollow outline. Deliberately unfilled and
+   * dim: it has to be legible without ever competing with the live ball for
+   * attention.
+   */
+  private drawGhost(
+    ctx: CanvasRenderingContext2D,
+    ghost: { position: Vec2; trail: Vec2[] },
+    radius: number,
+    palette: Palette,
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = 0.32;
+    ctx.strokeStyle = palette.textDim;
+    ctx.lineCap = 'round';
+
+    for (let i = 1; i < ghost.trail.length; i++) {
+      const t = i / ghost.trail.length;
+      ctx.globalAlpha = t * 0.22;
+      ctx.lineWidth = radius * 0.8 * t;
+      ctx.beginPath();
+      ctx.moveTo(ghost.trail[i - 1]!.x, ghost.trail[i - 1]!.y);
+      ctx.lineTo(ghost.trail[i]!.x, ghost.trail[i]!.y);
+      ctx.stroke();
+    }
+
+    // Dashed, so at a glance it reads as a replay rather than a second ball.
+    ctx.globalAlpha = 0.72;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([3, 2.5]);
+    ctx.beginPath();
+    ctx.arc(ghost.position.x, ghost.position.y, radius + 1, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }

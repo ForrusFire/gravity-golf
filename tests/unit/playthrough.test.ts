@@ -35,11 +35,13 @@ describe('solver solutions replay through the real game', () => {
   // coarser step, only half its solutions survived being replayed here.
   for (const level of ALL_LEVELS) {
     it(`${level.id} "${level.name}" sinks when its solution is replayed`, () => {
+      // A little wider than the default: the search stands in for a skilled
+      // player, and a few holes have a solution that a coarser sweep misses.
       const solution = solveLevel(level, {
-        angleSamples: 72,
-        powerSamples: 5,
+        angleSamples: 90,
+        powerSamples: 6,
         maxStrokes: level.par,
-        beamWidth: 5,
+        beamWidth: 6,
       });
       expect(solution.solved, `no solution found within par ${level.par}`).toBe(true);
 

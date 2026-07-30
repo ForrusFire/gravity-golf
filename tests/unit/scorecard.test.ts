@@ -23,6 +23,8 @@ const result = (levelId: string, strokes: number, par: number, stars: number): H
   medal: strokes < par ? 'gold' : strokes === par ? 'silver' : 'bronze',
   time: 10,
   longestShot: 100,
+  feats: [],
+  shots: [],
 });
 
 const LEVELS = [level('a', 3), level('b', 4), level('c', 2)];

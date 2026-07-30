@@ -61,24 +61,29 @@ export const CHAPTER_1: LevelDef[] = [
     id: 'c1-3',
     name: 'Slingshot',
     chapter: 0,
-    // A slingshot onto a ledge is a three, not a two: the solver cannot find a
-    // two-stroke line at gameplay precision, so neither will a player.
+    // Two strokes is achievable; par 3 leaves the hole that teaches
+    // slingshotting a stroke of slack.
     par: 3,
-    tee: vec(-500, -230),
-    // Both ends sit on a ledge: a hole hanging in open space can only ever be
-    // lipped, because nothing slows the ball on the way in.
-    hole: { position: vec(480, -202) },
+    tee: vec(-520, -240),
+    // On a sand anchor rather than a flat ledge. A ball arriving on a ledge
+    // rolls along it and off the end; on a small sand body the surface curves
+    // away in every direction and the pull holds the ball at the cup.
+    hole: { position: onSurface(vec(470, -140), 58, -Math.PI / 2, 3) },
     bounds: BOUNDS,
     hint: 'Swing around a planet to steal a change of direction.',
     ambientDrag: 0.1,
     bodies: [
-      planet('p1', vec(0, 90), 115, 1000, { range: 720 }),
-      wall('gate-l', vec(-150, -400), vec(-150, -150), 10),
-      wall('gate-r', vec(150, -400), vec(150, -150), 10),
-      wall('ledge-l', vec(-620, -190), vec(-330, -190), 12),
-      wall('ledge-r', vec(330, -190), vec(620, -190), 12),
+      planet('p1', vec(-20, 120), 115, 1000, { range: 720 }),
+      planet('anchor', vec(470, -140), 58, 640, {
+        range: 340,
+        material: 'sand',
+        style: 'sand',
+      }),
+      // Blocks the straight line, so reaching the cup means dipping down into
+      // the planet's pull and letting it swing the ball round.
+      wall('gate', vec(150, -400), vec(150, -110), 10),
     ],
-    stars: [vec(0, -120), vec(-320, 60), vec(320, 60)],
+    stars: [vec(-20, -120), vec(-330, 40), vec(300, -300)],
   },
   {
     id: 'c1-4',

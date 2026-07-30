@@ -1,5 +1,5 @@
 import { AudioEngine } from '../audio/audio';
-import { clamp } from '../core/math';
+import { clamp, damp } from '../core/math';
 import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
 import { HIGH_CONTRAST_PALETTE, SPACE_PALETTE } from '../render/palette';
@@ -24,8 +24,10 @@ import { BALL_RADIUS, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed } from './generator';
 import { LevelGenerator } from './generator-client';
+import { GhostRunner } from './ghost';
 import { ProgressStore, type Settings } from './progress';
-import { PlaySession, type SessionEvent } from './session';
+import { FEATS, PlaySession, type SessionEvent } from './session';
+import { resolveSkin } from './skins';
 
 type AppScreen =
   | 'title'
@@ -46,6 +48,13 @@ const MIN_ZOOM = 0.55;
 const TRAIL_LENGTH = 34;
 /** Trail samples are spaced by time, not frames, so it looks the same at any FPS. */
 const TRAIL_INTERVAL = 1 / 60;
+
+/** How much the clock slows during a tense approach to the cup. */
+const SLOWMO_SCALE = 0.32;
+/** Distance from the cup, in hole radii, where the slow-motion band begins. */
+const SLOWMO_RADII = 4.5;
+/** Seconds the camera spends showing the hole before play starts. */
+const FLYBY_SECONDS = 1.1;
 
 export class GameApp {
   private readonly renderer: Renderer;
@@ -78,6 +87,12 @@ export class GameApp {
   private generating = false;
   private disposed = false;
 
+  private ghost: GhostRunner | null = null;
+  /** Eased 0..1; 1 is full speed. Drives the approach slow-motion. */
+  private timeScale = 1;
+  /** Counts down at level start while the camera shows the hole. */
+  private flybyTimer = 0;
+
   constructor(
     private readonly container: HTMLElement,
     progress = new ProgressStore(),
@@ -93,6 +108,7 @@ export class GameApp {
     this.hud = new Hud({
       onPause: () => this.pause(),
       onRetry: () => this.retry(),
+      onUndo: () => this.undo(),
       onToggleField: () =>
         this.applySettings({ showGravityField: !this.progress.settings.showGravityField }),
     });
@@ -110,6 +126,10 @@ export class GameApp {
           this.aimState = null;
         },
         onFirstInteraction: () => void this.startAudio(),
+        onInteract: () => {
+          // Any input means the player is ready; do not make them wait.
+          this.flybyTimer = 0;
+        },
       },
       { aimMode: this.progress.settings.aimMode },
     );
@@ -178,17 +198,48 @@ export class GameApp {
     const session = this.session;
 
     if (session && this.screen === 'play') {
-      const events = session.update(dt);
+      // The clock slows on a tense approach, so a near miss is something you
+      // watch rather than something that already happened.
+      const scaled = dt * this.updateTimeScale(dt, session);
+      const events = session.update(scaled);
       this.handleSessionEvents(events);
+      this.ghost?.advance(scaled);
       this.updateAim();
-      this.updateTrail(dt, session);
+      this.updateTrail(scaled, session);
       this.updateCamera(dt, session);
       this.hud.sync(session);
+      if (this.flybyTimer > 0) this.flybyTimer = Math.max(0, this.flybyTimer - dt);
     }
 
     if (!settings.reducedMotion) this.renderer.starfield.update(dt);
     this.renderer.particles.update(dt);
     this.renderer.camera.update(dt);
+  }
+
+  /**
+   * Eases the simulation clock down while the ball is closing on the cup at a
+   * speed that could actually drop, and back up otherwise. Purely presentation:
+   * the simulation is fixed-step, so slowing it changes how much sim time a
+   * real frame buys, never the trajectory.
+   */
+  private updateTimeScale(dt: number, session: PlaySession): number {
+    let target = 1;
+
+    if (session.state === 'flying' && !this.progress.settings.reducedMotion) {
+      const hole = session.world.hole;
+      const distance = V.distance(session.ball.position, hole.position);
+      const speed = V.length(session.ball.velocity);
+      const nearCup = distance < hole.radius * SLOWMO_RADII;
+      // Only slow down when a drop is plausible; a screamer flying past the cup
+      // is not a tense moment, it is a miss.
+      const catchable = speed < hole.captureSpeed * 2.2;
+      if (nearCup && catchable) target = SLOWMO_SCALE;
+    }
+
+    // Ease so the transition reads as a swell rather than a stutter.
+    const rate = target < this.timeScale ? 14 : 6;
+    this.timeScale = damp(this.timeScale, target, rate, dt);
+    return this.timeScale;
   }
 
   private updateTrail(dt: number, session: PlaySession): void {
@@ -210,6 +261,19 @@ export class GameApp {
     const settings = this.progress.settings;
 
     camera.targetZoom = this.baseZoom * this.manualZoom;
+
+    // Opening flyby: frame the whole hole first, then settle onto the ball.
+    // Holes are wider than the screen, so without this the player's first look
+    // at the layout is the moment they have already committed to a shot.
+    if (this.flybyTimer > 0) {
+      const bounds = session.world.bounds;
+      camera.target = {
+        x: (bounds.minX + bounds.maxX) / 2,
+        y: (bounds.minY + bounds.maxY) / 2,
+      };
+      camera.targetZoom = camera.fit(bounds, 40, 1.4);
+      return;
+    }
 
     let focus = session.ball.position;
     if (session.state !== 'flying') {
@@ -347,12 +411,15 @@ export class GameApp {
           particles.burst(event.position, palette.accent, 1.2);
           break;
 
-        case 'sunk':
+        case 'sunk': {
           this.audio.play('sink');
           particles.sinkCelebration(session.world.hole.position, palette.holeRim);
           if (shakeAllowed) camera.shake(4, 0.3);
+          const feat = event.result.feats[0];
+          if (feat) this.hud.showToast(FEATS[feat].label, 2.4, 'good');
           this.finishHole();
           break;
+        }
       }
     }
   }
@@ -383,11 +450,44 @@ export class GameApp {
     this.previewCache = null;
     this.cameraOffset = V.ZERO;
     this.manualZoom = 1;
+    this.timeScale = 1;
     this.renderer.particles.clear();
     this.renderer.resetDecor();
     this.refitCamera();
-    this.renderer.camera.snapTo(level.tee, this.baseZoom);
+
+    // Race your own best run, when there is one recorded and it is wanted.
+    const bestShots = this.progress.bestShots(level.id);
+    this.ghost =
+      this.progress.settings.showGhost && bestShots.length > 0
+        ? new GhostRunner(level, bestShots)
+        : null;
+
+    const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
+    this.flybyTimer = flyby;
+    if (flyby > 0) {
+      const bounds = this.session.world.bounds;
+      this.renderer.camera.snapTo(
+        { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 },
+        this.renderer.camera.fit(bounds, 40, 1.4),
+      );
+    } else {
+      this.renderer.camera.snapTo(this.session.ball.position, this.baseZoom);
+    }
     this.renderer.canvas.focus();
+  }
+
+  /** Takes back the last shot. */
+  private undo(): void {
+    const session = this.session;
+    if (!session?.canUndo) return;
+    if (!session.undo()) return;
+    this.audio.play('back');
+    this.trail = [];
+    this.aimState = null;
+    this.previewCache = null;
+    this.timeScale = 1;
+    this.hud.sync(session);
+    this.hud.showToast('Shot taken back', 1.2);
   }
 
   private refitCamera(): void {
@@ -580,6 +680,7 @@ export class GameApp {
     this.overlay.show(
       settingsScreen(
         this.progress.settings,
+        this.progress.totalStars(CAMPAIGN_IDS),
         (patch) => this.applySettings(patch),
         () => this.leaveSubScreen(),
         () => this.confirmResetProgress(),
@@ -592,8 +693,11 @@ export class GameApp {
     this.returnScreen = from;
     this.screen = 'scorecard';
     this.overlay.show(
-      scorecardScreen(buildScorecard(ALL_LEVELS, this.progress), CHAPTERS, () =>
-        this.leaveSubScreen(),
+      scorecardScreen(
+        buildScorecard(ALL_LEVELS, this.progress),
+        CHAPTERS,
+        this.progress.earnedFeats(),
+        () => this.leaveSubScreen(),
       ),
       { onEscape: () => this.leaveSubScreen(), wide: true },
     );
@@ -704,6 +808,13 @@ export class GameApp {
             this.retry();
           }
           break;
+        case 'KeyZ':
+        case 'Backspace':
+          if (this.screen === 'play') {
+            event.preventDefault();
+            this.undo();
+          }
+          break;
         case 'KeyG':
           if (this.screen === 'play' || this.screen === 'paused') {
             event.preventDefault();
@@ -749,12 +860,15 @@ export class GameApp {
           aim: null,
           time: performance.now() / 1000,
           levelId: '',
+          skin: resolveSkin(this.progress.settings.ballSkin, this.progress.totalStars(CAMPAIGN_IDS)),
+          ghost: null,
         },
         { ...options, showGravityField: false },
       );
       return;
     }
 
+    const ghost = this.ghost;
     const scene: Scene = {
       world: session.world,
       ballPosition: session.ball.position,
@@ -764,6 +878,11 @@ export class GameApp {
       aim: this.screen === 'play' ? this.aimState : null,
       time: session.totalTime,
       levelId: session.level.id,
+      skin: resolveSkin(this.progress.settings.ballSkin, this.progress.totalStars(CAMPAIGN_IDS)),
+      ghost:
+        ghost && ghost.visible
+          ? { position: ghost.position, trail: ghost.trail }
+          : null,
     };
     this.renderer.draw(scene, options);
   }

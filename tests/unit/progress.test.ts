@@ -20,6 +20,8 @@ const result = (overrides: Partial<HoleResult> = {}): HoleResult => ({
   medal: 'silver',
   time: 20,
   longestShot: 400,
+  feats: [],
+  shots: [],
   ...overrides,
 });
 
@@ -59,6 +61,7 @@ describe('parseProgress', () => {
     );
     expect(parsed.levels['c1-1']).toEqual({
       bestStrokes: 2,
+      bestShots: [],
       bestStars: 3,
       bestMedal: 'gold',
       bestTime: 12,

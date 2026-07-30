@@ -6,6 +6,7 @@ import { button, clear, el, formatToPar } from './dom';
 export interface HudCallbacks {
   onPause(): void;
   onRetry(): void;
+  onUndo(): void;
   onToggleField(): void;
 }
 
@@ -26,6 +27,7 @@ export class Hud {
   private clockWrap: HTMLElement;
   private toast: HTMLElement;
   private hint: HTMLElement;
+  private undoButton: HTMLButtonElement;
 
   private toastTimer = 0;
   private hintTimer = 0;
@@ -48,6 +50,12 @@ export class Hud {
     this.toast = el('div', { class: 'hud__toast', attrs: { role: 'status', 'aria-live': 'polite' } });
     this.hint = el('div', { class: 'hud__hint' });
 
+    this.undoButton = button('↶', callbacks.onUndo, {
+      class: 'btn--icon',
+      title: 'Take back last shot (Z)',
+      attrs: { 'aria-label': 'Take back last shot' },
+    });
+
     this.root = el('div', { class: 'hud' }, [
       el('div', { class: 'hud__top' }, [
         el('div', { class: 'hud__title' }, [this.levelName, this.parLabel]),
@@ -63,6 +71,7 @@ export class Hud {
           this.starHolder,
         ]),
         el('div', { class: 'hud__actions' }, [
+          this.undoButton,
           button('↺', callbacks.onRetry, {
             class: 'btn--icon',
             title: 'Restart hole (R)',
@@ -120,6 +129,8 @@ export class Hud {
     Array.from(this.starHolder.children).forEach((node, i) => {
       node.classList.toggle('star--on', i < earned);
     });
+
+    this.undoButton.disabled = !session.canUndo;
 
     // The shot clock only appears once a shot is running long.
     const clock = session.shotClock;

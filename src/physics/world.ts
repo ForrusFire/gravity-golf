@@ -337,18 +337,18 @@ const resolveCollisions = (
 
     if (vn < 0) {
       const tangent = { x: rel.x - normal.x * vn, y: rel.y - normal.y * vn };
-      // Below this impact speed a bounce would only produce jitter, so the
-      // ball is allowed to settle instead.
-      const restitution = -vn < world.config.restSpeed ? 0 : surface.restitution;
-      const bounced = -vn * restitution;
-      const nextRel = {
-        x: tangent.x * surface.tangentRetention + normal.x * bounced,
-        y: tangent.y * surface.tangentRetention + normal.y * bounced,
-      };
-      ball.velocity = V.add(nextRel, surfaceVel);
-
       const impactSpeed = -vn;
-      if (impactSpeed > 1) {
+
+      if (impactSpeed >= world.config.restSpeed) {
+        // A genuine impact: bounce, and lose some speed along the surface.
+        const bounced = impactSpeed * surface.restitution;
+        ball.velocity = V.add(
+          {
+            x: tangent.x * surface.tangentRetention + normal.x * bounced,
+            y: tangent.y * surface.tangentRetention + normal.y * bounced,
+          },
+          surfaceVel,
+        );
         events.push({
           type: 'bounce',
           point: contact.query.point,
@@ -357,6 +357,13 @@ const resolveCollisions = (
           material: surface.id,
           bodyId: contact.body.id,
         });
+      } else {
+        // Resting or rolling contact: gravity presses the ball into the surface
+        // every step, so treating that as an impact would apply the tangential
+        // loss hundreds of times a second and stop a rolling ball dead. Cancel
+        // only the motion into the surface and let rollingDrag, which is
+        // per-second, do the slowing.
+        ball.velocity = V.add(tangent, surfaceVel);
       }
     }
 

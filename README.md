@@ -23,9 +23,16 @@ npm run dev      # play it at http://localhost:5173
 - **Arrive slowly.** A ball that reaches the cup too fast rims out.
 - **Hazards** — suns, black holes, spikes — destroy the ball and cost a penalty
   stroke. Anything lethal is drawn with a red serrated corona.
+- **Take a shot back** whenever you like. Restarting the hole was already free,
+  so undo costs nothing but the tedium of replaying the shots before it.
+- **Race your best run.** Once you have finished a hole, a faint ghost replays
+  your best attempt beside you.
+- **Feats** reward style: a full orbit, a clean sink that touches nothing, a
+  ricochet, a graze past a hazard. Collecting stars unlocks ball skins.
 
-Keyboard: arrows aim and set power, `Space` shoots, `R` restarts,
-`G` toggles the gravity overlay, `C` recentres the camera, `Esc` pauses.
+Keyboard: arrows aim and set power, `Space` shoots, `Z` takes back a shot,
+`R` restarts, `G` toggles the gravity overlay, `C` recentres the camera,
+`Esc` pauses.
 Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
@@ -80,6 +87,17 @@ never registers as at rest.
 
 **Prediction.** The aiming preview runs the real integrator on a throwaway copy
 of the world, so what it draws cannot drift from what the ball actually does.
+
+**Contact, again.** Sustained contact is not an impact. Gravity presses a
+resting ball into the surface every step, so applying the impact response there
+too multiplied the tangential loss hundreds of times a second and stopped a
+rolling ball dead in a tenth of a second. Only genuine impacts bounce; rolling
+is slowed by a per-second drag, which is also what finally makes ice, sand and
+rock feel different underfoot.
+
+**Presentation clocks.** The approach slow-motion scales how much simulated
+time a real frame buys. The simulation itself is fixed-step, so slowing it down
+changes what you see and never where the ball goes.
 
 ## Tests
 

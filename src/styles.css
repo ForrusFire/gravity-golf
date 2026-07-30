@@ -902,3 +902,129 @@ body.loading::after {
     transform: rotate(360deg);
   }
 }
+
+/* ------------------------------------------------------------ feats, skins */
+
+.results__feats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+}
+
+.feat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 210, 87, 0.5);
+  background: rgba(255, 210, 87, 0.1);
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.feat-chip__icon {
+  font-size: 0.7rem;
+}
+
+.feats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.4rem;
+}
+
+.feat {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0.5;
+}
+
+.feat--earned {
+  opacity: 1;
+  background: rgba(255, 210, 87, 0.09);
+}
+
+.feat__icon {
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.feat--earned .feat__icon {
+  color: var(--gold);
+}
+
+.feat__label {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.feat__desc {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.skins {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr));
+  gap: 0.5rem;
+}
+
+.skin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.6rem 0.4rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(26, 32, 62, 0.6);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+
+.skin:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(150, 180, 255, 0.55);
+}
+
+.skin:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.skin--active {
+  border-color: var(--accent);
+  background: rgba(90, 209, 255, 0.12);
+}
+
+.skin--locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.skin__swatch {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+}
+
+.skin__name {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.skin__req {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}

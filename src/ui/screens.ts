@@ -1,7 +1,8 @@
 import type { Chapter } from '../game/levels';
 import type { LevelDef } from '../game/level';
 import type { ProgressStore, Settings } from '../game/progress';
-import type { HoleResult, Medal } from '../game/session';
+import { FEATS, type FeatId, type HoleResult, type Medal } from '../game/session';
+import { BALL_SKINS, isSkinUnlocked } from '../game/skins';
 import { button, clear, el, formatTime, formatToPar, starRow } from './dom';
 
 const MEDAL_LABEL: Record<Medal, string> = {
@@ -267,6 +268,18 @@ export const resultsScreen = (
         text: result.stars === 3 ? 'All stars collected' : `${result.stars} of 3 stars`,
       }),
     ]),
+    result.feats.length > 0
+      ? el(
+          'div',
+          { class: 'results__feats' },
+          result.feats.map((id) =>
+            el('span', { class: 'feat-chip', title: FEATS[id].description }, [
+              el('span', { class: 'feat-chip__icon', text: '✦' }),
+              FEATS[id].label,
+            ]),
+          ),
+        )
+      : null,
     callbacks.previousBest !== null
       ? el('p', { class: 'results__previous', text: `Previous best: ${callbacks.previousBest}` })
       : null,
@@ -312,6 +325,7 @@ export const pauseScreen = (level: LevelDef, callbacks: PauseCallbacks): HTMLEle
 
 export const settingsScreen = (
   settings: Settings,
+  stars: number,
   onChange: (patch: Partial<Settings>) => void,
   onBack: () => void,
   onResetProgress: () => void,
@@ -410,6 +424,48 @@ export const settingsScreen = (
         ),
       ]),
 
+      toggle(
+        'Race your best run',
+        settings.showGhost,
+        (v) => onChange({ showGhost: v }),
+        'Replays your best attempt as a faint ghost ball',
+      ),
+
+      el('h3', { text: 'Ball' }),
+      el('div', { class: 'skins' }, BALL_SKINS.map((skin) => {
+        const unlocked = isSkinUnlocked(skin, stars);
+        return el(
+          'button',
+          {
+            class: `skin ${settings.ballSkin === skin.id && unlocked ? 'skin--active' : ''} ${
+              unlocked ? '' : 'skin--locked'
+            }`.trim(),
+            attrs: {
+              type: 'button',
+              disabled: !unlocked,
+              'aria-label': unlocked
+                ? `${skin.name} ball`
+                : `${skin.name} ball, locked, needs ${skin.starsRequired} stars`,
+            },
+            on: { click: () => unlocked && onChange({ ballSkin: skin.id }) },
+          },
+          [
+            el('span', {
+              class: 'skin__swatch',
+              style: {
+                background: `radial-gradient(circle at 35% 32%, ${skin.highlight}, ${skin.body})`,
+                boxShadow: `0 0 12px ${skin.glow}`,
+              },
+            }),
+            el('span', { class: 'skin__name', text: skin.name }),
+            el('span', {
+              class: 'skin__req',
+              text: unlocked ? 'Unlocked' : `${skin.starsRequired} ★`,
+            }),
+          ],
+        );
+      })),
+
       el('h3', { text: 'Display' }),
       toggle(
         'Gravity field overlay',
@@ -499,6 +555,7 @@ export const scorecardTotals = (rows: ScorecardRow[]): ScorecardTotals => {
 export const scorecardScreen = (
   rows: ScorecardRow[],
   chapters: Chapter[],
+  earnedFeats: readonly FeatId[],
   onBack: () => void,
 ): HTMLElement => {
   const totals = scorecardTotals(rows);
@@ -565,6 +622,21 @@ export const scorecardScreen = (
       statBlock('Stars', `${totals.stars}/${totals.starsTotal}`),
     ]),
     body,
+    el('h3', { text: `Feats — ${earnedFeats.length} of ${Object.keys(FEATS).length}` }),
+    el(
+      'div',
+      { class: 'feats' },
+      Object.values(FEATS).map((feat) => {
+        const earned = earnedFeats.includes(feat.id);
+        return el('div', { class: `feat ${earned ? 'feat--earned' : ''}`.trim() }, [
+          el('span', { class: 'feat__icon', text: earned ? '✦' : '·' }),
+          el('div', {}, [
+            el('span', { class: 'feat__label', text: feat.label }),
+            el('small', { class: 'feat__desc', text: feat.description }),
+          ]),
+        ]);
+      }),
+    ),
   ]);
 };
 

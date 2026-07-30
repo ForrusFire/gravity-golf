@@ -42,7 +42,9 @@ export const CHAPTER_3: LevelDef[] = [
     bodies: [
       // Negative surface gravity: the field points outward.
       planet('rep', vec(-40, 0), 70, -820, { range: 520, style: 'ice', material: 'ice' }),
-      planet('anchor', vec(520, 0), 60, 620, { range: 400 }),
+      // Dusty landing pad: sand stops an arriving ball near the cup rather
+      // than letting it roll around the planet forever.
+      planet('anchor', vec(520, 0), 60, 620, { range: 400, material: 'sand', style: 'sand' }),
       wall('rail-top', vec(-300, -260), vec(300, -260), 12),
       wall('rail-bottom', vec(-300, 260), vec(300, 260), 12),
     ],
