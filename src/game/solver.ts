@@ -72,6 +72,25 @@ export interface SolveResult {
 
 type ShotOutcome = 'sink' | 'rest' | 'death' | 'timeout';
 
+/**
+ * Everything a shot can change about the board and carry into the next stroke.
+ *
+ * The game persists all of it across a hole, so the search has to as well: a
+ * locked cup cannot be opened without banking stars over several strokes, and a
+ * gate thrown on stroke one has to still be open on stroke two.
+ */
+export interface BoardState {
+  collected: ReadonlySet<string>;
+  switchesOn: ReadonlySet<string>;
+  breakables: Readonly<Record<string, number>>;
+}
+
+const initialBoardState = (world: World): BoardState => ({
+  collected: new Set(world.collectibles.filter((c) => c.collected).map((c) => c.id)),
+  switchesOn: new Set(world.switches.filter((s) => s.on).map((s) => s.id)),
+  breakables: { ...world.breakables },
+});
+
 interface ShotSim {
   outcome: ShotOutcome;
   position: Vec2;
@@ -79,6 +98,8 @@ interface ShotSim {
   closest: number;
   /** Ids of stars this shot passed through. */
   stars: string[];
+  /** The board as this shot left it. */
+  state: BoardState;
 }
 
 /** Simulates one shot from a resting ball and reports where it ends up. */
@@ -88,12 +109,16 @@ const simulateShot = (
   startTime: number,
   impulse: Vec2,
   opts: SolveOptions,
+  state: BoardState,
 ): ShotSim => {
+  // A fresh copy each shot so sibling branches cannot see each other's changes,
+  // seeded from the branch's own accumulated state.
   const sandbox: World = {
     ...world,
-    // A fresh copy each shot, so one shot's pickups do not hide a star from
-    // the next.
-    collectibles: world.collectibles.map((c) => ({ ...c, collected: false })),
+    collectibles: world.collectibles.map((c) => ({ ...c, collected: state.collected.has(c.id) })),
+    switches: world.switches.map((sw) => ({ ...sw, on: state.switchesOn.has(sw.id) })),
+    breakables: { ...state.breakables },
+    revision: 0,
     config: { ...world.config, timeStep: opts.timeStep },
     time: startTime,
     shapeCache: undefined,
@@ -113,6 +138,7 @@ const simulateShot = (
     time: sandbox.time,
     closest: closestDistance,
     stars,
+    state: initialBoardState(sandbox),
   });
 
   for (let i = 0; i < steps; i++) {
@@ -131,7 +157,19 @@ interface SearchNode {
   position: Vec2;
   time: number;
   shots: Shot[];
+  state: BoardState;
 }
+
+/** Distinguishes two rest positions that differ only in what the board is doing. */
+const stateKey = (state: BoardState): string =>
+  [
+    [...state.collected].sort().join('|'),
+    [...state.switchesOn].sort().join('|'),
+    Object.keys(state.breakables)
+      .sort()
+      .map((id) => `${id}:${state.breakables[id]}`)
+      .join('|'),
+  ].join('/');
 
 /**
  * Breadth-first beam search over shots, used to prove every shipped hole is
@@ -149,10 +187,31 @@ export const solveLevel = (
   // The game settles the ball before handing over control, so searching from
   // the authored tee would solve a hole that is not the one being played.
   const start = settledTee(level);
-  let frontier: SearchNode[] = [{ position: start, time: 0, shots: [] }];
+  let frontier: SearchNode[] = [
+    { position: start, time: 0, shots: [], state: initialBoardState(world) },
+  ];
   let closestApproach = V.distance(start, world.hole.position);
   let simulated = 0;
   const starsSeen = new Set<string>();
+
+  const required = world.hole.requiresStars ?? 0;
+  /**
+   * Distance to the hole, except while the cup is still locked — then the stars
+   * are the objective and parking next to a cup that will not open is no
+   * progress at all.
+   */
+  const scoreNode = (position: Vec2, state: BoardState): number => {
+    const held = state.collected.size;
+    if (required > 0 && held < required) {
+      let nearest = Infinity;
+      for (const item of world.collectibles) {
+        if (state.collected.has(item.id)) continue;
+        nearest = Math.min(nearest, V.distance(position, item.position));
+      }
+      return (required - held) * 100000 + (Number.isFinite(nearest) ? nearest : 0);
+    }
+    return V.distance(position, world.hole.position);
+  };
 
   for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
     const candidates: Array<SearchNode & { score: number }> = [];
@@ -168,7 +227,7 @@ export const solveLevel = (
           // Identical arithmetic to PlaySession.shoot, so the shots this
           // search returns are bit-for-bit the shots a player would take.
           const impulse = shotImpulse(V.fromAngle(angle), power, maxPower);
-          const sim = simulateShot(world, node.position, node.time, impulse, opts);
+          const sim = simulateShot(world, node.position, node.time, impulse, opts, node.state);
           simulated++;
           closestApproach = Math.min(closestApproach, sim.closest);
           for (const id of sim.stars) starsSeen.add(id);
@@ -182,7 +241,8 @@ export const solveLevel = (
               position: sim.position,
               time: sim.time,
               shots,
-              score: V.distance(sim.position, world.hole.position),
+              state: sim.state,
+              score: scoreNode(sim.position, sim.state),
             });
           }
         }
@@ -192,12 +252,29 @@ export const solveLevel = (
     // Merge nearby rest positions, then keep the most promising few.
     candidates.sort((x, y) => x.score - y.score);
     const kept: Array<SearchNode & { score: number }> = [];
+    const seenStates = new Set<string>();
+    const take = (candidate: (typeof candidates)[number]): void => {
+      kept.push(candidate);
+      seenStates.add(stateKey(candidate.state));
+    };
     for (const candidate of candidates) {
       if (kept.length >= opts.beamWidth) break;
+      // Two balls at the same spot are only the same node if the board around
+      // them matches — one may have a gate open that the other does not.
+      const key = stateKey(candidate.state);
       const duplicate = kept.some(
-        (k) => V.distance(k.position, candidate.position) < opts.mergeRadius,
+        (k) =>
+          stateKey(k.state) === key &&
+          V.distance(k.position, candidate.position) < opts.mergeRadius,
       );
-      if (!duplicate) kept.push(candidate);
+      if (!duplicate) take(candidate);
+    }
+    // Reserve room for board states the distance-ranked beam crowded out. A shot
+    // that throws a switch usually parks the ball somewhere worse, so without
+    // this the search would keep discarding the only branch that can finish.
+    for (const candidate of candidates) {
+      if (kept.length >= opts.beamWidth * 2) break;
+      if (!seenStates.has(stateKey(candidate.state))) take(candidate);
     }
     if (kept.length === 0) break;
     frontier = kept;
@@ -224,10 +301,20 @@ export const reachableStars = (
   const seen = new Set<string>();
   const maxPower = levelMaxPower(level);
 
-  let frontier: Array<{ position: Vec2; time: number }> = [{ position: settledTee(level), time: 0 }];
+  const base = initialBoardState(world);
+  /**
+   * Machine state carries forward (a gate opened on stroke one stays open), but
+   * pickups are cleared every shot: this asks whether each star is *reachable*,
+   * so having already banked one must not hide it from a later branch.
+   */
+  const carry = (state: BoardState): BoardState => ({ ...state, collected: new Set<string>() });
+
+  let frontier: Array<{ position: Vec2; time: number; state: BoardState }> = [
+    { position: settledTee(level), time: 0, state: carry(base) },
+  ];
 
   for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
-    const rests: Array<{ position: Vec2; time: number; score: number }> = [];
+    const rests: Array<{ position: Vec2; time: number; state: BoardState; score: number }> = [];
 
     for (const node of frontier) {
       for (let a = 0; a < opts.angleSamples; a++) {
@@ -243,10 +330,16 @@ export const reachableStars = (
             node.time,
             shotImpulse(V.fromAngle(angle), power, maxPower),
             opts,
+            node.state,
           );
           for (const id of sim.stars) seen.add(id);
           if (sim.outcome === 'rest') {
-            rests.push({ position: sim.position, time: sim.time, score: -sim.stars.length });
+            rests.push({
+              position: sim.position,
+              time: sim.time,
+              state: carry(sim.state),
+              score: -sim.stars.length,
+            });
           }
         }
       }
@@ -258,10 +351,29 @@ export const reachableStars = (
     // explore new parts of the hole rather than crowding one corner.
     rests.sort((x, y) => x.score - y.score);
     const kept: typeof rests = [];
+    const seenStates = new Set<string>();
     for (const candidate of rests) {
       if (kept.length >= opts.beamWidth) break;
-      if (!kept.some((k) => V.distance(k.position, candidate.position) < opts.mergeRadius)) {
+      const key = stateKey(candidate.state);
+      if (
+        !kept.some(
+          (k) =>
+            stateKey(k.state) === key &&
+            V.distance(k.position, candidate.position) < opts.mergeRadius,
+        )
+      ) {
         kept.push(candidate);
+        seenStates.add(key);
+      }
+    }
+    // Same reservation as the solver: a branch that opened something up must
+    // survive the cut even when it parked the ball in a worse place.
+    for (const candidate of rests) {
+      if (kept.length >= opts.beamWidth * 2) break;
+      const key = stateKey(candidate.state);
+      if (!seenStates.has(key)) {
+        kept.push(candidate);
+        seenStates.add(key);
       }
     }
     if (kept.length === 0) break;

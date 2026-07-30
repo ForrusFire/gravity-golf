@@ -7,7 +7,7 @@ import {
   shapeCenter,
   type Aabb,
 } from '../physics/geometry';
-import { DEFAULT_PHYSICS, type Body, type Portal, type Zone } from '../physics/types';
+import { DEFAULT_PHYSICS, type Body, type Portal, type SwitchSpec, type Zone } from '../physics/types';
 import { createWorld, type BoundsMode, type World } from '../physics/world';
 
 /** Authored, serialisable description of a hole. Compiled into a `World`. */
@@ -19,12 +19,19 @@ export interface LevelDef {
   /** Expected stroke count. Beating it earns a better medal. */
   par: number;
   tee: Vec2;
-  hole: { position: Vec2; radius?: number; captureSpeed?: number };
+  hole: {
+    position: Vec2;
+    radius?: number;
+    captureSpeed?: number;
+    /** Stars needed in hand before the cup will accept the ball. */
+    requiresStars?: number;
+  };
   bounds: Aabb;
   boundsMode?: BoundsMode;
   bodies?: Body[];
   zones?: Zone[];
   portals?: Portal[];
+  switches?: SwitchSpec[];
   /** Optional bonus pickups, at most three per hole. */
   stars?: Vec2[];
   /** One-line tip shown the first time the hole is played. */
@@ -60,6 +67,12 @@ export const compileLevel = (level: LevelDef): World =>
     bodies: (level.bodies ?? []).map((b) => ({ ...b })),
     zones: (level.zones ?? []).map((z) => ({ ...z })),
     portals: (level.portals ?? []).map((p) => ({ ...p })),
+    switches: (level.switches ?? []).map((sw) => ({ ...sw, on: false })),
+    breakables: Object.fromEntries(
+      (level.bodies ?? [])
+        .filter((b) => b.hitsToBreak !== undefined)
+        .map((b) => [b.id, b.hitsToBreak as number]),
+    ),
     collectibles: (level.stars ?? []).map((position, i) => ({
       id: `${level.id}-star-${i}`,
       position,
@@ -70,6 +83,7 @@ export const compileLevel = (level: LevelDef): World =>
       position: level.hole.position,
       radius: levelHoleRadius(level),
       captureSpeed: level.hole.captureSpeed ?? DEFAULT_CAPTURE_SPEED,
+      requiresStars: level.hole.requiresStars ?? 0,
     },
     bounds: level.bounds,
     boundsMode: level.boundsMode ?? 'kill',
@@ -170,6 +184,33 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
     if (ids.has(zone.id)) err(`duplicate zone id "${zone.id}"`);
     ids.add(zone.id);
   }
+  for (const pad of level.switches ?? []) {
+    if (ids.has(pad.id)) err(`duplicate switch id "${pad.id}"`);
+    ids.add(pad.id);
+    if (!inBounds(b, pad.position)) err(`switch "${pad.id}" is outside the level bounds`);
+    if (pad.radius < BALL_RADIUS) warn(`switch "${pad.id}" is narrower than the ball`);
+  }
+
+  // A gate keyed to a switch that does not exist can never open, which would
+  // silently make the hole unfinishable.
+  const switchIds = new Set((level.switches ?? []).map((pad) => pad.id));
+  for (const body of level.bodies ?? []) {
+    if (body.removedBy && !switchIds.has(body.removedBy)) {
+      err(`body "${body.id}" is removed by unknown switch "${body.removedBy}"`);
+    }
+    if (body.addedBy && !switchIds.has(body.addedBy)) {
+      err(`body "${body.id}" is added by unknown switch "${body.addedBy}"`);
+    }
+    if (body.hitsToBreak !== undefined && body.hitsToBreak < 1) {
+      err(`body "${body.id}" has hitsToBreak below one`);
+    }
+  }
+
+  const required = level.hole.requiresStars ?? 0;
+  if (required > (level.stars ?? []).length) {
+    err(`hole needs ${required} stars but the level only has ${(level.stars ?? []).length}`);
+  }
+
   for (const portal of level.portals ?? []) {
     if (ids.has(portal.id)) err(`duplicate portal id "${portal.id}"`);
     ids.add(portal.id);
@@ -302,6 +343,60 @@ export const shotImpulse = (direction: Vec2, power: number, maxPower: number): V
   const clamped = power < 0 ? 0 : power > 1 ? 1 : power;
   return V.mul(dir, clamped * maxPower);
 };
+
+/** A switch pad the ball throws by passing through it. */
+export const switchPad = (
+  id: string,
+  position: Vec2,
+  radius = 26,
+  once = true,
+): SwitchSpec => ({ id, position, radius, once });
+
+/** A barrier that vanishes when `switchId` fires. */
+export const gate = (
+  id: string,
+  a: Vec2,
+  b: Vec2,
+  switchId: string,
+  thickness = 12,
+): Body => ({
+  id,
+  shape: { kind: 'capsule', a, b, radius: thickness },
+  material: 'metal',
+  style: 'wall',
+  removedBy: switchId,
+});
+
+/** A bridge that appears when `switchId` fires. */
+export const bridge = (
+  id: string,
+  a: Vec2,
+  b: Vec2,
+  switchId: string,
+  thickness = 12,
+): Body => ({
+  id,
+  shape: { kind: 'capsule', a, b, radius: thickness },
+  material: 'rock',
+  style: 'wall',
+  addedBy: switchId,
+});
+
+/** A block that shatters after `hits` impacts. */
+export const crystal = (
+  id: string,
+  center: Vec2,
+  radius: number,
+  hits = 1,
+  opts: Partial<Body> = {},
+): Body => ({
+  id,
+  shape: { kind: 'circle', center, radius },
+  material: 'metal',
+  style: 'crystal',
+  hitsToBreak: hits,
+  ...opts,
+});
 
 /** Where a body sits at t=0, accounting for its motion. */
 export const bodyOrigin = (body: Body): Vec2 => shapeCenter(bodyShapeAt(body, 0));

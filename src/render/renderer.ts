@@ -4,6 +4,7 @@ import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
 import {
   bodyShapeAt,
+  containsPoint,
   shapeBounds,
   shapeCenter,
   shapeRadius,
@@ -11,7 +12,7 @@ import {
   type Aabb,
 } from '../physics/geometry';
 import { MATERIALS, type Body, type Shape, type Zone } from '../physics/types';
-import { gravityAt, type World } from '../physics/world';
+import { gravityAt, isBodyActive, type World } from '../physics/world';
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
 import { colorsForBody, powerColor, type Palette } from './palette';
@@ -127,7 +128,18 @@ export class Renderer {
     for (const body of scene.world.bodies) {
       const shape = bodyShapeAt(body, scene.world.time);
       if (!overlaps(shapeBounds(shape), view)) continue;
-      this.drawBody(ctx, body, shape, options.palette);
+
+      if (!isBodyActive(scene.world, body)) {
+        // A bridge waiting on a switch is drawn as an outline. Telegraphing
+        // what will appear is the difference between a puzzle and a surprise.
+        if (body.addedBy) this.drawPendingBody(ctx, shape, scene.time, options.palette);
+        continue;
+      }
+      this.drawBody(ctx, body, shape, options.palette, scene.world);
+    }
+
+    for (const pad of scene.world.switches) {
+      this.drawSwitch(ctx, pad, scene.time, options.palette);
     }
 
     // After the bodies: a cup sunk into the ground must not be painted over by
@@ -363,17 +375,58 @@ export class Renderer {
         break;
       }
       case 'gravityScale': {
-        ctx.strokeStyle = zone.scale < 1 ? 'rgba(120, 255, 210, 0.55)' : 'rgba(255, 160, 90, 0.55)';
-        ctx.lineWidth = 2 / this.camera.zoom;
-        ctx.setLineDash([6 / this.camera.zoom, 6 / this.camera.zoom]);
+        // Three distinct readings, because a zone that reverses gravity and a
+        // zone that merely softens it demand opposite shots. Reversal also gets
+        // a glyph, so it is not colour alone that tells them apart.
+        const reversed = zone.scale < 0;
+        const tint = reversed ? '#ff7ae0' : zone.scale < 1 ? '#78ffd2' : '#ffa05a';
+        ctx.strokeStyle = tint;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = (reversed ? 3 : 2) / this.camera.zoom;
+        const dash = reversed ? [14, 7] : [6, 6];
+        ctx.setLineDash(dash.map((d) => d / this.camera.zoom));
         ctx.stroke();
-        ctx.globalAlpha = 0.09;
-        ctx.fillStyle = zone.scale < 1 ? '#78ffd2' : '#ffa05a';
+        ctx.globalAlpha = reversed ? 0.11 : 0.09;
+        ctx.fillStyle = tint;
         ctx.fill();
+        if (reversed) this.drawReversalGlyphs(ctx, zone.area, time, tint);
         break;
       }
     }
     ctx.restore();
+  }
+
+  /**
+   * Chevrons drifting upward through a reversal zone. Shape, not just hue: the
+   * one thing a player must know here is "things fall the other way".
+   */
+  private drawReversalGlyphs(
+    ctx: CanvasRenderingContext2D,
+    area: Shape,
+    time: number,
+    tint: string,
+  ): void {
+    const bounds = shapeBounds(area);
+    const spacing = 76;
+    // Rising, so the drift itself reads as "up".
+    const drift = spacing - ((time * 46) % spacing);
+    const w = 11;
+
+    ctx.strokeStyle = tint;
+    ctx.globalAlpha = 0.42;
+    ctx.lineWidth = 2.2 / this.camera.zoom;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let x = bounds.minX + spacing / 2; x < bounds.maxX; x += spacing) {
+      for (let y = bounds.maxY - drift; y > bounds.minY; y -= spacing) {
+        if (!containsPoint(area, { x, y })) continue;
+        ctx.moveTo(x - w, y + w * 0.6);
+        ctx.lineTo(x, y - w * 0.6);
+        ctx.lineTo(x + w, y + w * 0.6);
+      }
+    }
+    ctx.stroke();
   }
 
   private drawFlowArrows(
@@ -529,11 +582,88 @@ export class Renderer {
     return decor;
   }
 
+  /** A body that a switch has yet to bring into existence. */
+  private drawPendingBody(
+    ctx: CanvasRenderingContext2D,
+    shape: Shape,
+    time: number,
+    palette: Palette,
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = 0.3 + Math.sin(time * 2.6) * 0.1;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 2 / this.camera.zoom;
+    ctx.setLineDash([7 / this.camera.zoom, 6 / this.camera.zoom]);
+    this.tracePath(ctx, shape);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A switch pad, lit once thrown. */
+  private drawSwitch(
+    ctx: CanvasRenderingContext2D,
+    pad: { position: Vec2; radius: number; on: boolean },
+    time: number,
+    palette: Palette,
+  ): void {
+    // Violet, not the cyan accent: an unthrown pad and a teal bumper are often
+    // side by side, and mistaking machinery for a bounce surface loses a stroke.
+    const color = pad.on ? palette.holeRim : palette.accentAlt;
+    ctx.save();
+
+    const grad = ctx.createRadialGradient(
+      pad.position.x,
+      pad.position.y,
+      0,
+      pad.position.x,
+      pad.position.y,
+      pad.radius * 2,
+    );
+    grad.addColorStop(0, pad.on ? 'rgba(102,230,184,0.34)' : 'rgba(199,146,255,0.22)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(pad.position.x, pad.position.y, pad.radius * 2, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    if (!pad.on) {
+      // An unthrown switch pulses, so it reads as something to go and hit.
+      ctx.globalAlpha = 0.55 + Math.sin(time * 3.4) * 0.25;
+      ctx.setLineDash([6, 5]);
+      ctx.lineDashOffset = -time * 18;
+    }
+    ctx.beginPath();
+    ctx.arc(pad.position.x, pad.position.y, pad.radius, 0, TAU);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    if (pad.on) {
+      ctx.beginPath();
+      ctx.arc(pad.position.x, pad.position.y, pad.radius * 0.36, 0, TAU);
+      ctx.fill();
+    } else {
+      // A hollow chevron: "throw me".
+      const r = pad.radius * 0.4;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(pad.position.x - r, pad.position.y + r * 0.5);
+      ctx.lineTo(pad.position.x, pad.position.y - r * 0.6);
+      ctx.lineTo(pad.position.x + r, pad.position.y + r * 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawBody(
     ctx: CanvasRenderingContext2D,
     body: Body,
     shape: Shape,
     palette: Palette,
+    world?: World,
   ): void {
     const colors = colorsForBody(body.style, body.material);
     const center = shapeCenter(shape);
@@ -606,6 +736,30 @@ export class Renderer {
       ctx.restore();
     }
 
+    if (body.hitsToBreak !== undefined && world) {
+      const left = world.breakables[body.id] ?? body.hitsToBreak;
+      const damage = 1 - left / body.hitsToBreak;
+      if (damage > 0) {
+        // Cracks widen as the block takes hits, so its remaining life is
+        // readable without a number on screen.
+        ctx.save();
+        this.tracePath(ctx, shape);
+        ctx.clip();
+        ctx.strokeStyle = colors.rim;
+        ctx.globalAlpha = 0.35 + damage * 0.5;
+        ctx.lineWidth = 1 + damage * 2;
+        const cracks = Math.max(2, Math.round(damage * 5));
+        for (let i = 0; i < cracks; i++) {
+          const a = (i / cracks) * TAU + 0.4;
+          ctx.beginPath();
+          ctx.moveTo(center.x, center.y);
+          ctx.lineTo(center.x + Math.cos(a) * radius, center.y + Math.sin(a) * radius);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     if (body.style === 'bumper') {
       // Concentric rings read as "springy" without relying on hue.
       ctx.globalAlpha = 0.55;
@@ -672,6 +826,17 @@ export class Renderer {
     const { position, radius } = world.hole;
     ctx.save();
 
+    // A cup that will not accept the ball yet has to say so before the player
+    // wastes a stroke finding out. Amber rather than green, plus a bar across
+    // the mouth: the state is legible without relying on colour.
+    const owed = Math.max(
+      0,
+      (world.hole.requiresStars ?? 0) - world.collectibles.filter((c) => c.collected).length,
+    );
+    const locked = owed > 0;
+    const rim = locked ? palette.collectible : palette.holeRim;
+    const glow = locked ? '255, 210, 87' : '102, 230, 184';
+
     const pulse = 1 + Math.sin(time * 2.4) * 0.06;
     const grad = ctx.createRadialGradient(
       position.x,
@@ -681,8 +846,8 @@ export class Renderer {
       position.y,
       radius * 3.2,
     );
-    grad.addColorStop(0, 'rgba(102, 230, 184, 0.35)');
-    grad.addColorStop(1, 'rgba(102, 230, 184, 0)');
+    grad.addColorStop(0, `rgba(${glow}, 0.35)`);
+    grad.addColorStop(1, `rgba(${glow}, 0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius * 3.2, 0, TAU);
@@ -693,7 +858,7 @@ export class Renderer {
     ctx.arc(position.x, position.y, radius, 0, TAU);
     ctx.fill();
 
-    ctx.strokeStyle = palette.holeRim;
+    ctx.strokeStyle = rim;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, TAU);
@@ -704,6 +869,30 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius * 1.6 * pulse, 0, TAU);
     ctx.stroke();
+
+    if (locked) {
+      // Bars across the mouth, and one pip per star still owed.
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const t of [-0.34, 0.34]) {
+        const y = position.y + radius * t;
+        const half = Math.sqrt(Math.max(0, radius * radius - (radius * t) ** 2)) * 0.94;
+        ctx.moveTo(position.x - half, y);
+        ctx.lineTo(position.x + half, y);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = rim;
+      ctx.globalAlpha = 1;
+      const spread = radius * 0.5;
+      for (let i = 0; i < owed; i++) {
+        const x = position.x + (i - (owed - 1) / 2) * spread;
+        ctx.beginPath();
+        ctx.arc(x, position.y - radius * 2.1, radius * 0.16, 0, TAU);
+        ctx.fill();
+      }
+    }
 
     // Flag, so the target reads instantly even against a busy background.
     ctx.globalAlpha = 1;
@@ -716,7 +905,7 @@ export class Renderer {
     ctx.stroke();
 
     const wave = Math.sin(time * 3) * radius * 0.14;
-    ctx.fillStyle = palette.holeRim;
+    ctx.fillStyle = rim;
     ctx.beginPath();
     ctx.moveTo(position.x, position.y - flagHeight);
     ctx.quadraticCurveTo(

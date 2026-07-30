@@ -87,6 +87,7 @@ export interface BodyColors {
 const BODY_COLORS: Record<BodyStyle, BodyColors> = {
   planet: { fill: '#4a7fd4', fillDark: '#23386e', rim: '#8fc0ff', glow: 'rgba(90,150,255,0.28)' },
   moon: { fill: '#98a3c4', fillDark: '#4a5170', rim: '#d5dcf2', glow: 'rgba(180,195,235,0.22)' },
+  crystal: { fill: '#b58cff', fillDark: '#5b3a9e', rim: '#e6d6ff', glow: 'rgba(181,140,255,0.38)' },
   wall: { fill: '#5b6486', fillDark: '#333a52', rim: '#98a2c6', glow: null },
   // Deliberately not orange: bumpers must never be mistaken for a sun, which
   // is the difference between a free bounce and a destroyed ball.

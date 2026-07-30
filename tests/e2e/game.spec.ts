@@ -11,6 +11,8 @@ declare global {
       playLevel(level: unknown): void;
       showLevels(): void;
       showTitle(): void;
+      debugPlay(id: string): void;
+      levelIds(): string[];
     };
   }
 }
@@ -254,8 +256,11 @@ test.describe('menus', () => {
     await page.getByRole('button', { name: 'Select hole' }).click();
 
     await expect(page.getByRole('heading', { name: 'Select a hole' })).toBeVisible();
+    // Derived, not hard-coded: adding a chapter should not fail this test.
+    const holeCount = await page.evaluate(() => window.gravityGolf.levelIds().length);
+    expect(holeCount).toBeGreaterThan(0);
     const cards = page.locator('.level-card');
-    await expect(cards).toHaveCount(30);
+    await expect(cards).toHaveCount(holeCount);
 
     // The first hole is always open; the second is not, on a fresh save.
     await expect(cards.nth(0)).toBeEnabled();
@@ -284,7 +289,8 @@ test.describe('menus', () => {
     // Nothing played yet: every hole shows a dash for its best score.
     const firstRow = page.locator('.card__table tbody tr').first();
     await expect(firstRow).toContainText('First Light');
-    await expect(page.locator('.card__totals')).toContainText('0/30');
+    const holeCount = await page.evaluate(() => window.gravityGolf.levelIds().length);
+    await expect(page.locator('.card__totals')).toContainText(`0/${holeCount}`);
 
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: /^(Play|Continue)$/ }).click();
@@ -306,7 +312,7 @@ test.describe('menus', () => {
     await page.getByRole('button', { name: 'All holes' }).click();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Scorecard' }).click();
-    await expect(page.locator('.card__totals')).toContainText('1/30');
+    await expect(page.locator('.card__totals')).toContainText(`1/${holeCount}`);
   });
 
   test('the daily challenge generates a playable hole', async ({ page }) => {
@@ -449,5 +455,86 @@ test.describe('resilience', () => {
       () => document.querySelector('canvas')!.getBoundingClientRect().width,
     );
     expect(canvasWidth).toBeGreaterThan(1000);
+  });
+});
+
+test.describe('state mechanics', () => {
+  /** Plays the named hole through the debug hook and waits for control. */
+  const openHole = async (page: Page, id: string): Promise<void> => {
+    await startGame(page);
+    await page.evaluate((levelId) => window.gravityGolf.debugPlay(levelId), id);
+    await expect
+      .poll(async () => (await sessionState(page))?.levelId, { timeout: 5000 })
+      .toBe(id);
+    await expect.poll(async () => (await sessionState(page))?.canShoot, { timeout: 5000 }).toBe(true);
+  };
+
+  const boardState = (page: Page) =>
+    page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          world: { switches: Array<{ id: string; on: boolean }>; breakables: Record<string, number> };
+        } | null;
+      };
+      const world = app.session?.world;
+      if (!world) return null;
+      return {
+        switches: world.switches.map((s) => ({ id: s.id, on: s.on })),
+        breakables: { ...world.breakables },
+      };
+    });
+
+  test('throwing a switch drops the bridge it controls', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await openHole(page, 'c6-2');
+
+    const before = await boardState(page);
+    expect(before?.switches).toEqual([{ id: 'sw-span', on: false }]);
+
+    // The pad sits up and to the right of the tee.
+    await shoot(page, 0.55, -1, 0.62);
+    await expect
+      .poll(async () => (await boardState(page))?.switches.some((s) => s.on), { timeout: 15000 })
+      .toBe(true);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('a sealed cup refuses the ball and says why', async ({ page }) => {
+    await openHole(page, 'c6-4');
+
+    const locked = await page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: { world: { hole: { requiresStars?: number } } } | null;
+      };
+      return app.session?.world.hole.requiresStars ?? 0;
+    });
+    expect(locked).toBe(3);
+
+    // Nothing can be sunk here until all three stars are banked, so a long run
+    // of play must leave the hole unfinished rather than quietly completing.
+    await shoot(page, 1, 0.1, 1);
+    await page.waitForTimeout(4000);
+    const state = await sessionState(page);
+    expect(state?.state).not.toBe('sunk');
+  });
+
+  test('a crystal block loses a hit when struck', async ({ page }) => {
+    await openHole(page, 'c6-3');
+
+    const before = await boardState(page);
+    expect(before?.breakables).toMatchObject({ c1: 2, c2: 2, c3: 1 });
+
+    await shoot(page, 1, 0, 1);
+    await expect
+      .poll(
+        async () => {
+          const now = await boardState(page);
+          if (!now) return 99;
+          return Object.values(now.breakables).reduce((sum, n) => sum + n, 0);
+        },
+        { timeout: 15000 },
+      )
+      .toBeLessThan(5);
   });
 });

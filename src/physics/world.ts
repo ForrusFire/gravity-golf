@@ -27,6 +27,11 @@ export interface Hole {
   radius: number;
   /** The ball only drops if it enters slower than this. Faster balls lip out. */
   captureSpeed: number;
+  /**
+   * Stars that must be in hand before the cup will accept the ball. Turns the
+   * bonus pickups into the objective on holes that want it.
+   */
+  requiresStars?: number;
 }
 
 export interface Collectible {
@@ -38,10 +43,26 @@ export interface Collectible {
 
 export type BoundsMode = 'kill' | 'wall' | 'open';
 
+/** Runtime state of a switch pad. */
+export interface SwitchState {
+  id: string;
+  position: Vec2;
+  radius: number;
+  once: boolean;
+  on: boolean;
+}
+
 export interface World {
   bodies: Body[];
   zones: Zone[];
   portals: Portal[];
+  switches: SwitchState[];
+  /**
+   * Impacts left before each breakable body shatters, keyed by body id. Held
+   * here rather than on the body so a preview or a search can copy the mutable
+   * state cheaply and leave the level definition alone.
+   */
+  breakables: Record<string, number>;
   collectibles: Collectible[];
   hole: Hole;
   bounds: Aabb;
@@ -57,7 +78,20 @@ export interface World {
   time: number;
   /** Internal per-instant shape cache. Never write this from outside. */
   shapeCache?: ShapeCache;
+  /** Bumped when switch or breakable state changes; invalidates the cache. */
+  revision?: number;
 }
+
+/**
+ * Whether a body currently exists. Gated bodies let a switch open a barrier or
+ * drop a bridge; a shattered breakable is gone for the rest of the hole.
+ */
+export const isBodyActive = (world: World, body: Body): boolean => {
+  if (body.hitsToBreak !== undefined && (world.breakables[body.id] ?? 0) <= 0) return false;
+  if (body.removedBy && world.switches.some((s) => s.id === body.removedBy && s.on)) return false;
+  if (body.addedBy && !world.switches.some((s) => s.id === body.addedBy && s.on)) return false;
+  return true;
+};
 
 interface ResolvedBody {
   body: Body;
@@ -70,6 +104,11 @@ interface ShapeCache {
   time: number;
   /** Identity check, so a copied world with different bodies rebuilds. */
   source: Body[];
+  /**
+   * Bumped whenever a switch fires or a breakable shatters, so the cached set
+   * of active bodies cannot outlive the state it was built from.
+   */
+  revision: number;
   items: ResolvedBody[];
 }
 
@@ -82,14 +121,18 @@ interface ShapeCache {
  */
 const resolveBodies = (world: World, t: number): ResolvedBody[] => {
   const cache = world.shapeCache;
-  if (cache && cache.time === t && cache.source === world.bodies) return cache.items;
+  const revision = world.revision ?? 0;
+  if (cache && cache.time === t && cache.source === world.bodies && cache.revision === revision) {
+    return cache.items;
+  }
 
   const items: ResolvedBody[] = [];
   for (const body of world.bodies) {
+    if (!isBodyActive(world, body)) continue;
     const shape = bodyShapeAt(body, t);
     items.push({ body, shape, center: shapeCenter(shape), radius: shapeRadius(shape) });
   }
-  world.shapeCache = { time: t, source: world.bodies, items };
+  world.shapeCache = { time: t, source: world.bodies, revision, items };
   return items;
 };
 
@@ -102,6 +145,9 @@ export type SimEvent =
   | { type: 'lipout'; position: Vec2; speed: number }
   | { type: 'death'; position: Vec2; cause: DeathCause }
   | { type: 'portal'; from: Vec2; to: Vec2; portalId: string }
+  | { type: 'switch'; id: string; position: Vec2; on: boolean }
+  | { type: 'shatter'; bodyId: string; position: Vec2 }
+  | { type: 'locked'; position: Vec2; needed: number }
   | { type: 'rest'; position: Vec2 };
 
 export const createBall = (position: Vec2, radius = 7): Ball => ({
@@ -125,6 +171,10 @@ export interface BallRuntime {
   peakSpeed: number;
   /** Distance travelled since the last shot. */
   distance: number;
+  /** Switch ids the ball is currently overlapping, so each pass fires once. */
+  insideSwitches: Set<string>;
+  /** True while sitting in a cup that refused the ball, so it complains once. */
+  inLockedCup: boolean;
 }
 
 export const createBallRuntime = (): BallRuntime => ({
@@ -135,6 +185,8 @@ export const createBallRuntime = (): BallRuntime => ({
   airTime: 0,
   peakSpeed: 0,
   distance: 0,
+  insideSwitches: new Set(),
+  inLockedCup: false,
 });
 
 export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'>): World => ({
@@ -142,6 +194,8 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
   zones: [],
   portals: [],
   collectibles: [],
+  switches: [],
+  breakables: {},
   boundsMode: 'kill',
   uniformGravity: V.ZERO,
   config: DEFAULT_PHYSICS,
@@ -261,6 +315,9 @@ interface Contact {
  */
 const CONTACT_SKIN = 0.75;
 
+/** Speed kept when a ball smashes through the last hit of a breakable block. */
+const BREAKTHROUGH_RETENTION = 0.72;
+
 const findDeepestContact = (
   world: World,
   ball: Ball,
@@ -340,6 +397,26 @@ const resolveCollisions = (
       const impactSpeed = -vn;
 
       if (impactSpeed >= world.config.restSpeed) {
+        if (contact.body.hitsToBreak !== undefined) {
+          const left = (world.breakables[contact.body.id] ?? 0) - 1;
+          world.breakables[contact.body.id] = left;
+          world.revision = (world.revision ?? 0) + 1;
+          if (left <= 0) {
+            events.push({
+              type: 'shatter',
+              bodyId: contact.body.id,
+              position: contact.query.point,
+            });
+            // The block gave way, so the ball carries on through instead of
+            // bouncing off something that no longer exists — otherwise a
+            // breakable wall would cost a stroke per pane just to walk through
+            // the hole it made. Punching through costs speed, so a run of
+            // blocks is never free.
+            ball.velocity = V.mul(ball.velocity, BREAKTHROUGH_RETENTION);
+            break;
+          }
+        }
+
         // A genuine impact: bounce, and lose some speed along the surface.
         const bounced = impactSpeed * surface.restitution;
         ball.velocity = V.add(
@@ -410,6 +487,34 @@ const checkPortals = (world: World, ball: Ball, rt: BallRuntime, events: SimEven
   }
 };
 
+/**
+ * Fires any switch the ball is inside. A latching switch stays on; a toggle
+ * flips, but only once per pass, so sitting inside one does not strobe the
+ * course between states.
+ */
+const checkSwitches = (
+  world: World,
+  ball: Ball,
+  runtime: BallRuntime,
+  events: SimEvent[],
+): void => {
+  for (const pad of world.switches) {
+    const reach = pad.radius + ball.radius;
+    const inside = V.distanceSq(ball.position, pad.position) <= reach * reach;
+    const wasInside = runtime.insideSwitches.has(pad.id);
+
+    if (inside && !wasInside) {
+      runtime.insideSwitches.add(pad.id);
+      if (pad.once && pad.on) continue;
+      pad.on = pad.once ? true : !pad.on;
+      world.revision = (world.revision ?? 0) + 1;
+      events.push({ type: 'switch', id: pad.id, position: pad.position, on: pad.on });
+    } else if (!inside && wasInside) {
+      runtime.insideSwitches.delete(pad.id);
+    }
+  }
+};
+
 const checkCollectibles = (world: World, ball: Ball, events: SimEvent[]): void => {
   for (const item of world.collectibles) {
     if (item.collected) continue;
@@ -436,10 +541,33 @@ const checkHazardZones = (world: World, ball: Ball, events: SimEvent[]): boolean
  * Hole capture. Slow balls drop; fast balls are nudged by the rim and lip out,
  * which is what makes near misses feel like near misses.
  */
-const checkHole = (world: World, ball: Ball, dt: number, events: SimEvent[]): boolean => {
+const checkHole = (
+  world: World,
+  ball: Ball,
+  runtime: BallRuntime,
+  dt: number,
+  events: SimEvent[],
+): boolean => {
   const hole = world.hole;
   const dist = V.distance(ball.position, hole.position);
   const speed = V.length(ball.velocity);
+
+  // A locked cup refuses the ball until enough stars are in hand.
+  const required = hole.requiresStars ?? 0;
+  if (required > 0) {
+    const held = world.collectibles.filter((c) => c.collected).length;
+    if (held < required) {
+      // Edge-triggered: a ball parked in a sealed cup overlaps it for hundreds
+      // of steps, and one refusal per arrival is the honest signal.
+      const inside = dist <= hole.radius;
+      if (inside && !runtime.inLockedCup) {
+        events.push({ type: 'locked', position: hole.position, needed: required - held });
+      }
+      runtime.inLockedCup = inside;
+      return false;
+    }
+  }
+  runtime.inLockedCup = false;
 
   const funnelRadius = hole.radius * 2.4;
   if (dist < funnelRadius) {
@@ -573,6 +701,7 @@ export const stepWorld = (
 
     if (runtime.portalCooldown > 0) runtime.portalCooldown = Math.max(0, runtime.portalCooldown - h);
     checkPortals(world, ball, runtime, events);
+    checkSwitches(world, ball, runtime, events);
     checkCollectibles(world, ball, events);
 
     if (checkHazardZones(world, ball, events)) {
@@ -583,7 +712,7 @@ export const stepWorld = (
       runtime.alive = false;
       return;
     }
-    if (checkHole(world, ball, h, events)) {
+    if (checkHole(world, ball, runtime, h, events)) {
       runtime.sunk = true;
       ball.velocity = V.ZERO;
       ball.position = world.hole.position;

@@ -381,6 +381,27 @@ export class GameApp {
           particles.burst(event.to, palette.accentAlt, 1.4);
           break;
 
+        case 'switch':
+          this.audio.play(event.on ? 'unlock' : 'back');
+          particles.burst(event.position, event.on ? palette.holeRim : palette.textDim, 1.6);
+          if (event.on) this.hud.showToast('Switch thrown', 1.3, 'good');
+          break;
+
+        case 'shatter':
+          this.audio.play('bumper', 1);
+          particles.explosion(event.position, palette.accentAlt);
+          if (shakeAllowed) camera.shake(3, 0.22);
+          break;
+
+        case 'locked':
+          this.audio.play('lipout');
+          this.hud.showToast(
+            `The cup is sealed — ${event.needed} more star${event.needed === 1 ? '' : 's'}`,
+            1.8,
+            'bad',
+          );
+          break;
+
         case 'lipout':
           this.audio.play('lipout');
           this.hud.showToast('Too fast!', 1.2, 'bad');
@@ -894,6 +915,8 @@ const EMPTY_SCENE_WORLD = {
   zones: [],
   portals: [],
   collectibles: [],
+  switches: [],
+  breakables: {},
   hole: { position: { x: 0, y: -100000 }, radius: 1, captureSpeed: 1 },
   bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
   boundsMode: 'open' as const,

@@ -23,6 +23,13 @@ npm run dev      # play it at http://localhost:5173
 - **Arrive slowly.** A ball that reaches the cup too fast rims out.
 - **Hazards** — suns, black holes, spikes — destroy the ball and cost a penalty
   stroke. Anything lethal is drawn with a red serrated corona.
+- **Change the course.** Roll through a violet switch pad to open a gate or drop
+  a bridge; a bridge that has not appeared yet is outlined so you can plan
+  around it. Crystal blocks shatter after a set number of hits, and the hit that
+  breaks one lets you punch straight through.
+- **Some cups are sealed.** A cup barred and drawn in amber will not accept the
+  ball until you have banked every star, with a pip above it for each one still
+  owed.
 - **Take a shot back** whenever you like. Restarting the hole was already free,
   so undo costs nothing but the tedium of replaying the shots before it.
 - **Race your best run.** Once you have finished a hole, a faint ghost replays
@@ -37,7 +44,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-30 holes across five chapters, each introducing one idea at a time:
+42 holes across seven chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -46,6 +53,16 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 3. Event Horizon | Black holes, repulsors, null and amplified gravity |
 | 4. Machinery | Lifts, spinning arms, wormholes, conveyors, clockwork |
 | 5. Singularity | Binary suns, nebulae, vortices, and everything at once |
+| 6. Machine Shop | Switches, gates, drawbridges, breakable crystal, sealed cups |
+| 7. Inversion | Reversed, amplified and cancelled gravity |
+
+Chapters 1–5 are pure ballistics: you read the field and pick a line. From
+chapter 6 the hole itself has state, and a shot can change it — which is why
+undo and the shot-by-shot board snapshot exist.
+
+Gravity fields are colour- and shape-coded, never colour alone: a **pink** zone
+with chevrons rising through it reverses gravity, **amber** amplifies it, and
+**green** damps it.
 
 ## Daily challenge and random holes
 
@@ -118,6 +135,12 @@ Two of the suites are worth calling out:
   survived being replayed at gameplay precision.
 - **Every star is proven collectable.** Chapters unlock on star totals, so a
   star no shot can reach could strand a player short of the next chapter.
+- **The search carries board state.** A switch thrown on stroke one is still
+  thrown on stroke two, and stars bank across strokes — without that, a sealed
+  cup is unsolvable by construction and the completability proof would quietly
+  exclude the holes that need it most. The beam also reserves slots for distinct
+  board states, because the shot that opens a gate usually parks the ball
+  somewhere worse and would otherwise be the first thing discarded.
 - **Level validation** rejects buried tees, holes sunk inside a body, stars
   outside the play area and duplicate ids — the authoring mistakes that are
   invisible until someone plays the hole.

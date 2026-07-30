@@ -41,6 +41,9 @@ export type SessionEvent =
   | { type: 'star'; id: string; position: Vec2; total: number }
   | { type: 'star-lost'; id: string }
   | { type: 'portal'; from: Vec2; to: Vec2 }
+  | { type: 'switch'; id: string; position: Vec2; on: boolean }
+  | { type: 'shatter'; bodyId: string; position: Vec2 }
+  | { type: 'locked'; position: Vec2; needed: number }
   | { type: 'lipout'; position: Vec2 }
   | { type: 'settled'; position: Vec2 }
   | { type: 'died'; position: Vec2; cause: DeathCause; strokes: number }
@@ -110,6 +113,10 @@ interface Snapshot {
   safePosition: Vec2;
   banked: string[];
   collected: string[];
+  /** Ids of switches that were on. */
+  switchesOn: string[];
+  /** Hits left on each breakable. */
+  breakables: Record<string, number>;
 }
 
 interface FeatTracker {
@@ -267,6 +274,11 @@ export class PlaySession {
     for (const item of this.world.collectibles) {
       item.collected = snapshot.collected.includes(item.id);
     }
+    // Switches and shattered blocks are part of the board, so undo has to put
+    // the course back as well as the ball.
+    for (const pad of this.world.switches) pad.on = snapshot.switchesOn.includes(pad.id);
+    this.world.breakables = { ...snapshot.breakables };
+    this.world.revision = (this.world.revision ?? 0) + 1;
 
     this.strokes = snapshot.strokes;
     this.playTime = snapshot.playTime;
@@ -330,6 +342,8 @@ export class PlaySession {
       safePosition: this.safePosition,
       banked: [...this.bankedStars],
       collected: this.world.collectibles.filter((c) => c.collected).map((c) => c.id),
+      switchesOn: this.world.switches.filter((sw) => sw.on).map((sw) => sw.id),
+      breakables: { ...this.world.breakables },
     });
 
     this.strokes++;
@@ -402,6 +416,12 @@ export class PlaySession {
   restart(): void {
     this.world.time = 0;
     for (const c of this.world.collectibles) c.collected = false;
+    for (const pad of this.world.switches) pad.on = false;
+    for (const body of this.level.bodies ?? []) {
+      if (body.hitsToBreak !== undefined) this.world.breakables[body.id] = body.hitsToBreak;
+    }
+    this.world.revision = (this.world.revision ?? 0) + 1;
+    this.world.shapeCache = undefined;
     this.ball = createBall(settledTee(this.level), BALL_RADIUS);
     this.runtime = createBallRuntime();
     this.state = 'aiming';
@@ -503,6 +523,18 @@ export class PlaySession {
 
         case 'portal':
           out.push({ type: 'portal', from: event.from, to: event.to });
+          break;
+
+        case 'switch':
+          out.push({ type: 'switch', id: event.id, position: event.position, on: event.on });
+          break;
+
+        case 'shatter':
+          out.push({ type: 'shatter', bodyId: event.bodyId, position: event.position });
+          break;
+
+        case 'locked':
+          out.push({ type: 'locked', position: event.position, needed: event.needed });
           break;
 
         case 'lipout':

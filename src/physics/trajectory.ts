@@ -48,9 +48,12 @@ export const predictTrajectory = (
 
   const sandbox: World = {
     ...world,
-    // Collectibles are the only mutable members; copy them so previewing a shot
-    // does not bank the stars it would pass through.
+    // Every mutable member is copied, so previewing a shot cannot bank the
+    // stars it would pass through, throw a switch or shatter a block.
     collectibles: world.collectibles.map((c) => ({ ...c })),
+    switches: world.switches.map((sw) => ({ ...sw })),
+    breakables: { ...world.breakables },
+    shapeCache: undefined,
     config: { ...world.config, timeStep: opts.timeStep },
   };
 

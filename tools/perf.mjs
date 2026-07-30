@@ -13,7 +13,8 @@ import { resolveChromium } from '../tests/browser-path.ts';
 
 /** Per-frame CPU budget for the game itself, well inside a 16.7ms frame. */
 const BUDGET_MS = 6;
-const LEVELS = ['c5-6', 'c4-6', 'c5-4', 'c2-4', 'c1-1'];
+// The busiest holes in the game: most bodies, most zones, most overdraw.
+const LEVELS = ['c5-6', 'c7-6', 'c4-6', 'c7-1', 'c5-4', 'c6-6', 'c2-4', 'c1-1'];
 const SAMPLE_MS = 2500;
 
 const executablePath = resolveChromium();

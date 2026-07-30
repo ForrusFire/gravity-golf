@@ -109,6 +109,18 @@ export interface Body {
   gravity?: GravitySpec;
   motion?: MotionSpec;
   /**
+   * Present until the named switch is thrown — a barrier that opens.
+   * Physics and rendering both ignore it once the switch is on.
+   */
+  removedBy?: string;
+  /** Absent until the named switch is thrown — a bridge that appears. */
+  addedBy?: string;
+  /**
+   * Impacts this body survives before it shatters. Gives a hole destructible
+   * geometry, so the course can change shape as it is played.
+   */
+  hitsToBreak?: number;
+  /**
    * Presentation hint only — physics never reads it.
    * Lets the renderer distinguish a planet from a wall from a bumper.
    */
@@ -117,6 +129,7 @@ export interface Body {
 
 export type BodyStyle =
   | 'planet'
+  | 'crystal'
   | 'moon'
   | 'wall'
   | 'bumper'
@@ -141,6 +154,21 @@ export type Zone =
   | { id: string; kind: 'hazard'; area: Shape }
   /** Scales all gravity felt inside — for null zones and gravity amplifiers. */
   | { id: string; kind: 'gravityScale'; area: Shape; scale: number };
+
+/* ---------------------------------------------------------------- switches */
+
+/**
+ * A pad the ball throws by passing through it. Bodies referencing its id are
+ * added or removed when it fires — the only mechanic that lets a shot change
+ * the shape of the course.
+ */
+export interface SwitchSpec {
+  id: string;
+  position: Vec2;
+  radius: number;
+  /** Once thrown it stays thrown. Otherwise passing through toggles it. */
+  once: boolean;
+}
 
 /* ----------------------------------------------------------------- portals */
 

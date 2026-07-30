@@ -4,6 +4,8 @@ import { CHAPTER_2 } from './chapter2';
 import { CHAPTER_3 } from './chapter3';
 import { CHAPTER_4 } from './chapter4';
 import { CHAPTER_5 } from './chapter5';
+import { CHAPTER_6 } from './chapter6';
+import { CHAPTER_7 } from './chapter7';
 
 export interface Chapter {
   index: number;
@@ -49,6 +51,20 @@ export const CHAPTERS: Chapter[] = [
     subtitle: 'Everything at once',
     starsRequired: 26,
     levels: CHAPTER_5,
+  },
+  {
+    index: 5,
+    name: 'Machine Shop',
+    subtitle: 'Switches, bridges and breakable blocks',
+    starsRequired: 40,
+    levels: CHAPTER_6,
+  },
+  {
+    index: 6,
+    name: 'Inversion',
+    subtitle: 'Gravity itself becomes the puzzle',
+    starsRequired: 56,
+    levels: CHAPTER_7,
   },
 ];
 
