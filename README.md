@@ -27,6 +27,11 @@ npm run dev      # play it at http://localhost:5173
   a bridge; a bridge that has not appeared yet is outlined so you can plan
   around it. Crystal blocks shatter after a set number of hits, and the hit that
   breaks one lets you punch straight through.
+- **Beat the clock.** A pad with a ring around it springs back when the ring
+  runs out, so whatever it opened is only open while the ball is still in flight.
+  Some vaults need every pad thrown at once.
+- **One-way membranes** are marked with chevrons showing the direction you may
+  cross. There is no going back through one.
 - **Some cups are sealed.** A cup barred and drawn in amber will not accept the
   ball until you have banked every star, with a pip above it for each one still
   owed.
@@ -44,7 +49,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-42 holes across seven chapters, each introducing one idea at a time:
+48 holes across eight chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -55,10 +60,13 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 5. Singularity | Binary suns, nebulae, vortices, and everything at once |
 | 6. Machine Shop | Switches, gates, drawbridges, breakable crystal, sealed cups |
 | 7. Inversion | Reversed, amplified and cancelled gravity |
+| 8. Clockwork | Timed gates, one-way membranes, multi-lock vaults |
 
 Chapters 1–5 are pure ballistics: you read the field and pick a line. From
 chapter 6 the hole itself has state, and a shot can change it — which is why
-undo and the shot-by-shot board snapshot exist.
+undo and the shot-by-shot board snapshot exist. Chapter 6's switches stay thrown
+forever, which makes them a checklist; chapter 8's spring back, which turns the
+route into a schedule.
 
 Gravity fields are colour- and shape-coded, never colour alone: a **pink** zone
 with chevrons rising through it reverses gravity, **amber** amplifies it, and
@@ -136,7 +144,8 @@ Two of the suites are worth calling out:
 - **Every star is proven collectable.** Chapters unlock on star totals, so a
   star no shot can reach could strand a player short of the next chapter.
 - **The search carries board state.** A switch thrown on stroke one is still
-  thrown on stroke two, and stars bank across strokes — without that, a sealed
+  thrown on stroke two, its spring-back deadline travels with it, and stars bank
+  across strokes — without that, a sealed
   cup is unsolvable by construction and the completability proof would quietly
   exclude the holes that need it most. The beam also reserves slots for distinct
   board states, because the shot that opens a gate usually parks the ball

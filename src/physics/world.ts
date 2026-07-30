@@ -50,6 +50,10 @@ export interface SwitchState {
   radius: number;
   once: boolean;
   on: boolean;
+  /** Seconds it stays on once thrown. Absent means indefinitely. */
+  holdTime?: number;
+  /** World time at which a held switch springs back. */
+  offAt?: number;
 }
 
 export interface World {
@@ -88,9 +92,15 @@ export interface World {
  */
 export const isBodyActive = (world: World, body: Body): boolean => {
   if (body.hitsToBreak !== undefined && (world.breakables[body.id] ?? 0) <= 0) return false;
-  if (body.removedBy && world.switches.some((s) => s.id === body.removedBy && s.on)) return false;
-  if (body.addedBy && !world.switches.some((s) => s.id === body.addedBy && s.on)) return false;
+  // All named switches must be on: a body can demand a sequence, not just a pass.
+  if (body.removedBy !== undefined && allSwitchesOn(world, body.removedBy)) return false;
+  if (body.addedBy !== undefined && !allSwitchesOn(world, body.addedBy)) return false;
   return true;
+};
+
+const allSwitchesOn = (world: World, ids: string | string[]): boolean => {
+  if (typeof ids === 'string') return world.switches.some((s) => s.id === ids && s.on);
+  return ids.every((id) => world.switches.some((s) => s.id === id && s.on));
 };
 
 interface ResolvedBody {
@@ -333,6 +343,11 @@ const findDeepestContact = (
     const far = resolved.radius + reach;
     if (dx * dx + dy * dy > far * far) continue;
 
+    // A one-way membrane exists only for a ball travelling against it. A ball
+    // at rest on one has a zero dot product, so it still gets held up.
+    const oneWay = resolved.body.oneWay;
+    if (oneWay && V.dot(ball.velocity, oneWay) > 0) continue;
+
     const query = closestSurfacePoint(resolved.shape, ball.position);
     if (query.distance >= reach) continue;
     const penetration = ball.radius - query.distance;
@@ -499,14 +514,24 @@ const checkSwitches = (
   events: SimEvent[],
 ): void => {
   for (const pad of world.switches) {
+    // A held switch springs back on its own, whether or not the ball is near it.
+    if (pad.on && pad.offAt !== undefined && world.time >= pad.offAt) {
+      pad.on = false;
+      pad.offAt = undefined;
+      world.revision = (world.revision ?? 0) + 1;
+      events.push({ type: 'switch', id: pad.id, position: pad.position, on: false });
+    }
+
     const reach = pad.radius + ball.radius;
     const inside = V.distanceSq(ball.position, pad.position) <= reach * reach;
     const wasInside = runtime.insideSwitches.has(pad.id);
 
     if (inside && !wasInside) {
       runtime.insideSwitches.add(pad.id);
-      if (pad.once && pad.on) continue;
+      // A held switch can always be re-thrown; that is the point of holding it.
+      if (pad.once && pad.on && pad.holdTime === undefined) continue;
       pad.on = pad.once ? true : !pad.on;
+      pad.offAt = pad.on && pad.holdTime !== undefined ? world.time + pad.holdTime : undefined;
       world.revision = (world.revision ?? 0) + 1;
       events.push({ type: 'switch', id: pad.id, position: pad.position, on: pad.on });
     } else if (!inside && wasInside) {

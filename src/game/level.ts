@@ -195,11 +195,16 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
   // silently make the hole unfinishable.
   const switchIds = new Set((level.switches ?? []).map((pad) => pad.id));
   for (const body of level.bodies ?? []) {
-    if (body.removedBy && !switchIds.has(body.removedBy)) {
-      err(`body "${body.id}" is removed by unknown switch "${body.removedBy}"`);
+    const gatedBy = (ids: string | string[] | undefined): string[] =>
+      ids === undefined ? [] : typeof ids === 'string' ? [ids] : ids;
+    for (const id of gatedBy(body.removedBy)) {
+      if (!switchIds.has(id)) err(`body "${body.id}" is removed by unknown switch "${id}"`);
     }
-    if (body.addedBy && !switchIds.has(body.addedBy)) {
-      err(`body "${body.id}" is added by unknown switch "${body.addedBy}"`);
+    for (const id of gatedBy(body.addedBy)) {
+      if (!switchIds.has(id)) err(`body "${body.id}" is added by unknown switch "${id}"`);
+    }
+    if (Array.isArray(body.addedBy) && body.addedBy.length === 0) {
+      err(`body "${body.id}" is added by an empty switch list, so it can never appear`);
     }
     if (body.hitsToBreak !== undefined && body.hitsToBreak < 1) {
       err(`body "${body.id}" has hitsToBreak below one`);
@@ -352,12 +357,23 @@ export const switchPad = (
   once = true,
 ): SwitchSpec => ({ id, position, radius, once });
 
-/** A barrier that vanishes when `switchId` fires. */
+/**
+ * A pad that springs back after `holdTime` seconds. Whatever it controls is only
+ * open while the ball is still in flight, which makes the route a schedule.
+ */
+export const timedPad = (
+  id: string,
+  position: Vec2,
+  radius: number,
+  holdTime: number,
+): SwitchSpec => ({ id, position, radius, once: true, holdTime });
+
+/** A barrier that vanishes while every named switch is on. */
 export const gate = (
   id: string,
   a: Vec2,
   b: Vec2,
-  switchId: string,
+  switchId: string | string[],
   thickness = 12,
 ): Body => ({
   id,
@@ -367,12 +383,12 @@ export const gate = (
   removedBy: switchId,
 });
 
-/** A bridge that appears when `switchId` fires. */
+/** A bridge that appears once every named switch is on. */
 export const bridge = (
   id: string,
   a: Vec2,
   b: Vec2,
-  switchId: string,
+  switchId: string | string[],
   thickness = 12,
 ): Body => ({
   id,
@@ -380,6 +396,24 @@ export const bridge = (
   material: 'rock',
   style: 'wall',
   addedBy: switchId,
+});
+
+/**
+ * A membrane the ball can only cross in the direction of `through`. Useful for
+ * handing out a route that cannot be taken back.
+ */
+export const membrane = (
+  id: string,
+  a: Vec2,
+  b: Vec2,
+  through: Vec2,
+  thickness = 10,
+): Body => ({
+  id,
+  shape: { kind: 'capsule', a, b, radius: thickness },
+  material: 'bouncy',
+  style: 'ice',
+  oneWay: V.normalize(through),
 });
 
 /** A block that shatters after `hits` impacts. */

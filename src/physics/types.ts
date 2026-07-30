@@ -112,9 +112,18 @@ export interface Body {
    * Present until the named switch is thrown — a barrier that opens.
    * Physics and rendering both ignore it once the switch is on.
    */
-  removedBy?: string;
-  /** Absent until the named switch is thrown — a bridge that appears. */
-  addedBy?: string;
+  removedBy?: string | string[];
+  /**
+   * Absent until the named switch is thrown — a bridge that appears. Several
+   * ids mean all of them, so a hole can demand a sequence rather than a single
+   * pass.
+   */
+  addedBy?: string | string[];
+  /**
+   * A one-way membrane: the ball is only stopped when travelling *against* this
+   * direction. Lets a hole hand out a route you cannot take back.
+   */
+  oneWay?: Vec2;
   /**
    * Impacts this body survives before it shatters. Gives a hole destructible
    * geometry, so the course can change shape as it is played.
@@ -168,6 +177,12 @@ export interface SwitchSpec {
   radius: number;
   /** Once thrown it stays thrown. Otherwise passing through toggles it. */
   once: boolean;
+  /**
+   * Seconds the switch stays on before springing back. Absent means forever.
+   * A held switch turns a route into a route *and* a schedule: the gate is only
+   * open while the ball is still travelling.
+   */
+  holdTime?: number;
 }
 
 /* ----------------------------------------------------------------- portals */

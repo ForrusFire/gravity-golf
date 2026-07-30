@@ -6,6 +6,7 @@ import { CHAPTER_4 } from './chapter4';
 import { CHAPTER_5 } from './chapter5';
 import { CHAPTER_6 } from './chapter6';
 import { CHAPTER_7 } from './chapter7';
+import { CHAPTER_8 } from './chapter8';
 
 export interface Chapter {
   index: number;
@@ -65,6 +66,13 @@ export const CHAPTERS: Chapter[] = [
     subtitle: 'Gravity itself becomes the puzzle',
     starsRequired: 56,
     levels: CHAPTER_7,
+  },
+  {
+    index: 7,
+    name: 'Clockwork',
+    subtitle: 'Timed gates, one-way membranes and multi-lock vaults',
+    starsRequired: 74,
+    levels: CHAPTER_8,
   },
 ];
 

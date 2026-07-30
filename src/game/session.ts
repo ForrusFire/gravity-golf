@@ -115,6 +115,8 @@ interface Snapshot {
   collected: string[];
   /** Ids of switches that were on. */
   switchesOn: string[];
+  /** Deadlines for held switches, so undo restores a countdown mid-flight. */
+  switchTimers: Record<string, number>;
   /** Hits left on each breakable. */
   breakables: Record<string, number>;
 }
@@ -276,7 +278,10 @@ export class PlaySession {
     }
     // Switches and shattered blocks are part of the board, so undo has to put
     // the course back as well as the ball.
-    for (const pad of this.world.switches) pad.on = snapshot.switchesOn.includes(pad.id);
+    for (const pad of this.world.switches) {
+      pad.on = snapshot.switchesOn.includes(pad.id);
+      pad.offAt = snapshot.switchTimers[pad.id];
+    }
     this.world.breakables = { ...snapshot.breakables };
     this.world.revision = (this.world.revision ?? 0) + 1;
 
@@ -343,6 +348,11 @@ export class PlaySession {
       banked: [...this.bankedStars],
       collected: this.world.collectibles.filter((c) => c.collected).map((c) => c.id),
       switchesOn: this.world.switches.filter((sw) => sw.on).map((sw) => sw.id),
+      switchTimers: Object.fromEntries(
+        this.world.switches
+          .filter((sw) => sw.offAt !== undefined)
+          .map((sw) => [sw.id, sw.offAt as number]),
+      ),
       breakables: { ...this.world.breakables },
     });
 

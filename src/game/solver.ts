@@ -82,12 +82,17 @@ type ShotOutcome = 'sink' | 'rest' | 'death' | 'timeout';
 export interface BoardState {
   collected: ReadonlySet<string>;
   switchesOn: ReadonlySet<string>;
+  /** World time each held switch springs back at, for switches still counting. */
+  switchTimers: Readonly<Record<string, number>>;
   breakables: Readonly<Record<string, number>>;
 }
 
 const initialBoardState = (world: World): BoardState => ({
   collected: new Set(world.collectibles.filter((c) => c.collected).map((c) => c.id)),
   switchesOn: new Set(world.switches.filter((s) => s.on).map((s) => s.id)),
+  switchTimers: Object.fromEntries(
+    world.switches.filter((s) => s.offAt !== undefined).map((s) => [s.id, s.offAt as number]),
+  ),
   breakables: { ...world.breakables },
 });
 
@@ -116,7 +121,11 @@ const simulateShot = (
   const sandbox: World = {
     ...world,
     collectibles: world.collectibles.map((c) => ({ ...c, collected: state.collected.has(c.id) })),
-    switches: world.switches.map((sw) => ({ ...sw, on: state.switchesOn.has(sw.id) })),
+    switches: world.switches.map((sw) => ({
+      ...sw,
+      on: state.switchesOn.has(sw.id),
+      offAt: state.switchTimers[sw.id],
+    })),
     breakables: { ...state.breakables },
     revision: 0,
     config: { ...world.config, timeStep: opts.timeStep },
@@ -165,6 +174,13 @@ const stateKey = (state: BoardState): string =>
   [
     [...state.collected].sort().join('|'),
     [...state.switchesOn].sort().join('|'),
+    // Rounded: two branches whose timers differ by a hundredth of a second are
+    // the same node for search purposes, and treating them as distinct would
+    // hand every held switch its own reserved beam slot.
+    Object.keys(state.switchTimers)
+      .sort()
+      .map((id) => `${id}:${Math.round((state.switchTimers[id] as number) * 4)}`)
+      .join('|'),
     Object.keys(state.breakables)
       .sort()
       .map((id) => `${id}:${state.breakables[id]}`)

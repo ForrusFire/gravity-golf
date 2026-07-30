@@ -139,7 +139,7 @@ export class Renderer {
     }
 
     for (const pad of scene.world.switches) {
-      this.drawSwitch(ctx, pad, scene.time, options.palette);
+      this.drawSwitch(ctx, pad, scene.time, scene.world.time, options.palette);
     }
 
     // After the bodies: a cup sunk into the ground must not be painted over by
@@ -602,8 +602,9 @@ export class Renderer {
   /** A switch pad, lit once thrown. */
   private drawSwitch(
     ctx: CanvasRenderingContext2D,
-    pad: { position: Vec2; radius: number; on: boolean },
+    pad: { position: Vec2; radius: number; on: boolean; holdTime?: number; offAt?: number },
     time: number,
+    worldTime: number,
     palette: Palette,
   ): void {
     // Violet, not the cyan accent: an unthrown pad and a teal bumper are often
@@ -654,6 +655,33 @@ export class Renderer {
       ctx.lineTo(pad.position.x, pad.position.y - r * 0.6);
       ctx.lineTo(pad.position.x + r, pad.position.y + r * 0.5);
       ctx.stroke();
+    }
+
+    // A held switch shows how long is left, because the whole point of it is
+    // that the route it opens is temporary.
+    if (pad.holdTime !== undefined) {
+      const remaining = pad.on && pad.offAt !== undefined ? pad.offAt - worldTime : 0;
+      const fraction = clamp(remaining / pad.holdTime, 0, 1);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.beginPath();
+      ctx.arc(pad.position.x, pad.position.y, pad.radius * 1.45, 0, TAU);
+      ctx.stroke();
+      if (fraction > 0) {
+        // Draining clockwise from the top, so it reads as a clock, not a meter.
+        ctx.strokeStyle = fraction < 0.3 ? palette.aimStrong : palette.holeRim;
+        ctx.beginPath();
+        ctx.arc(
+          pad.position.x,
+          pad.position.y,
+          pad.radius * 1.45,
+          -Math.PI / 2,
+          -Math.PI / 2 + TAU * fraction,
+        );
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -778,6 +806,10 @@ export class Renderer {
     this.tracePath(ctx, shape);
     ctx.stroke();
 
+    // A one-way membrane wears arrows pointing the way you may cross it. Without
+    // them it is a wall that inexplicably lets the ball through half the time.
+    if (body.oneWay) this.drawOneWayArrows(ctx, shape, body.oneWay, colors.rim);
+
     // Anything that destroys the ball wears a serrated corona. It is a shape
     // cue, not a colour cue, so it survives a colourblind player and a
     // washed-out screen alike.
@@ -787,6 +819,46 @@ export class Renderer {
       this.drawDangerCorona(ctx, center, radius, palette, inset);
     }
 
+    ctx.restore();
+  }
+
+  /** Chevrons along a membrane, pointing the direction the ball may cross. */
+  private drawOneWayArrows(
+    ctx: CanvasRenderingContext2D,
+    shape: Shape,
+    through: Vec2,
+    color: string,
+  ): void {
+    if (shape.kind !== 'capsule') return;
+    const dir = V.normalize(through);
+    const along = V.normalize(V.sub(shape.b, shape.a));
+    const length = V.distance(shape.a, shape.b);
+    const spacing = 46;
+    const count = Math.max(1, Math.floor(length / spacing));
+    const w = 7;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < count; i++) {
+      const t = ((i + 0.5) / count) * length;
+      const cx = shape.a.x + along.x * t;
+      const cy = shape.a.y + along.y * t;
+      // A chevron: two strokes meeting at a tip that points the allowed way.
+      const tip = { x: cx + dir.x * w, y: cy + dir.y * w };
+      for (const side of [1, -1]) {
+        const base = {
+          x: cx - dir.x * w * 0.4 + along.x * w * side,
+          y: cy - dir.y * w * 0.4 + along.y * w * side,
+        };
+        ctx.moveTo(base.x, base.y);
+        ctx.lineTo(tip.x, tip.y);
+      }
+    }
+    ctx.stroke();
     ctx.restore();
   }
 

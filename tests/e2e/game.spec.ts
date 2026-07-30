@@ -519,6 +519,23 @@ test.describe('state mechanics', () => {
     expect(state?.state).not.toBe('sunk');
   });
 
+  test('a held switch springs back on its own', async ({ page }) => {
+    await openHole(page, 'c8-1');
+
+    const before = await boardState(page);
+    expect(before?.switches).toEqual([{ id: 'sw-door', on: false }]);
+
+    // The pad sits to the right along the floor; a firm roll reaches it.
+    await shoot(page, 1, 0, 0.5);
+    await expect
+      .poll(async () => (await boardState(page))?.switches[0]?.on, { timeout: 15000 })
+      .toBe(true);
+    // Nothing touches it again — only its own 3.2s clock turns it off.
+    await expect
+      .poll(async () => (await boardState(page))?.switches[0]?.on, { timeout: 15000 })
+      .toBe(false);
+  });
+
   test('a crystal block loses a hit when struck', async ({ page }) => {
     await openHole(page, 'c6-3');
 

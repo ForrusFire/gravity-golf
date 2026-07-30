@@ -19,7 +19,9 @@ import {
   compileLevel,
   crystal,
   gate,
+  membrane,
   switchPad,
+  timedPad,
   validateLevel,
   type LevelDef,
 } from '../../src/game/level';
@@ -293,5 +295,130 @@ describe('undo restores board state', () => {
     }
     expect(events.filter((e) => e.type === 'switch')).toHaveLength(1);
     expect(session.world.switches[0]!.on).toBe(true);
+  });
+});
+
+describe('timed switch pads', () => {
+  const timedWorld = (holdTime: number): World =>
+    makeWorld({
+      switches: [{ ...timedPad('sw', V.vec(0, 0), 30, holdTime), on: false }],
+      bodies: [gate('door', V.vec(400, -200), V.vec(400, 200), 'sw')],
+    });
+
+  it('springs back after the hold expires, on its own', () => {
+    const world = timedWorld(1);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+
+    // 263 units to the near edge of the pad at 400/s: struck by ~0.66s.
+    const early = run(world, ball, runtime, 0.9);
+    expect(early.filter((e) => e.type === 'switch')).toHaveLength(1);
+    expect(world.switches[0]!.on).toBe(true);
+
+    // The ball is long past the pad by now; nothing but the clock turns it off.
+    const later = run(world, ball, runtime, 1.5);
+    const off = later.filter((e) => e.type === 'switch');
+    expect(off).toHaveLength(1);
+    expect(off[0]).toMatchObject({ id: 'sw', on: false });
+    expect(world.switches[0]!.on).toBe(false);
+  });
+
+  it('holds the gate open long enough for a ball to get through', () => {
+    // 400 units at 400/s is one second of travel.
+    const world = timedWorld(4);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(500, 0), 400);
+    run(world, ball, runtime, 3);
+    expect(ball.position.x).toBeGreaterThan(400);
+  });
+
+  it('closes the gate in time to stop a slow ball', () => {
+    const world = timedWorld(0.4);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(500, 0), 200);
+    run(world, ball, runtime, 6);
+    expect(world.switches[0]!.on).toBe(false);
+    expect(ball.position.x).toBeLessThan(400);
+  });
+
+  it('can be thrown again after springing back', () => {
+    const world = timedWorld(0.5);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 2);
+    expect(world.switches[0]!.on).toBe(false);
+
+    launchBall(ball, runtime, V.vec(-400, 0));
+    const again = run(world, ball, runtime, 2);
+    expect(again.some((e) => e.type === 'switch' && e.on)).toBe(true);
+  });
+});
+
+describe('multi-switch gating', () => {
+  const bothWorld = (): World =>
+    makeWorld({
+      bodies: [gate('vault', V.vec(0, -200), V.vec(0, 200), ['sw-a', 'sw-b'])],
+      switches: [
+        { ...switchPad('sw-a', V.vec(-400, 200), 30), on: false },
+        { ...switchPad('sw-b', V.vec(-400, -200), 30), on: false },
+      ],
+    });
+
+  it('stays shut while only one switch is on', () => {
+    const world = bothWorld();
+    world.switches[0]!.on = true;
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeLessThan(0);
+  });
+
+  it('opens only once every switch is on', () => {
+    const world = bothWorld();
+    world.switches[0]!.on = true;
+    world.switches[1]!.on = true;
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeGreaterThan(200);
+  });
+
+  it('requires every switch for a bridge too', () => {
+    const span = bridge('span', V.vec(0, -200), V.vec(0, 200), ['sw-a', 'sw-b']);
+    const world = makeWorld({
+      bodies: [span],
+      switches: [
+        { ...switchPad('sw-a', V.vec(-400, 200), 30), on: true },
+        { ...switchPad('sw-b', V.vec(-400, -200), 30), on: false },
+      ],
+    });
+    expect(isBodyActive(world, span)).toBe(false);
+    world.switches[1]!.on = true;
+    expect(isBodyActive(world, span)).toBe(true);
+  });
+});
+
+describe('one-way membranes', () => {
+  const skinWorld = (): World =>
+    makeWorld({ bodies: [membrane('skin', V.vec(0, -200), V.vec(0, 200), V.vec(1, 0))] });
+
+  it('lets the ball through in the allowed direction', () => {
+    const world = skinWorld();
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeGreaterThan(200);
+  });
+
+  it('stops the ball coming back the other way', () => {
+    const world = skinWorld();
+    const [ball, runtime] = shoot(V.vec(300, 0), V.vec(-300, 0), 400);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeGreaterThan(0);
+  });
+
+  it('holds up a ball resting against it', () => {
+    // Gravity pushes left, against the membrane, so the ball must not seep past.
+    const world = makeWorld({
+      bodies: [membrane('skin', V.vec(0, -200), V.vec(0, 200), V.vec(1, 0))],
+      uniformGravity: V.vec(-400, 0),
+    });
+    const ball = createBall(V.vec(40, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    run(world, ball, runtime, 5);
+    expect(ball.position.x).toBeGreaterThan(0);
   });
 });

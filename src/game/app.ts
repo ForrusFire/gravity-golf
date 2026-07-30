@@ -384,7 +384,13 @@ export class GameApp {
         case 'switch':
           this.audio.play(event.on ? 'unlock' : 'back');
           particles.burst(event.position, event.on ? palette.holeRim : palette.textDim, 1.6);
-          if (event.on) this.hud.showToast('Switch thrown', 1.3, 'good');
+          // The off case matters too: a held pad springing back mid-flight is the
+          // reason a shot suddenly fails, and silence there reads as a bug.
+          this.hud.showToast(
+            event.on ? 'Switch thrown' : 'Switch released',
+            1.3,
+            event.on ? 'good' : 'bad',
+          );
           break;
 
         case 'shatter':
