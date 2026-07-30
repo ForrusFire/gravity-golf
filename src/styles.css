@@ -592,9 +592,14 @@ body.loading::after {
 }
 
 .results__stars-label,
+.results__hinted,
 .results__previous {
   font-size: 0.8rem;
   color: var(--text-dim);
+}
+
+.results__hinted {
+  margin: 0.1rem 0 0;
 }
 
 .results__buttons {
@@ -1053,4 +1058,26 @@ body.loading::after {
 .skin__req {
   font-size: 0.68rem;
   color: var(--text-dim);
+}
+
+/* A button waiting on the solver: visibly working, not merely disabled. */
+.btn--busy {
+  animation: btn-busy 1.1s ease-in-out infinite;
+}
+
+@keyframes btn-busy {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn--busy {
+    animation: none;
+    opacity: 0.55;
+  }
 }

@@ -8,6 +8,8 @@ export interface HudCallbacks {
   onRetry(): void;
   onUndo(): void;
   onToggleField(): void;
+  /** Ask the solver for a playable line from where the ball is. */
+  onHint(): void;
 }
 
 /**
@@ -28,6 +30,9 @@ export class Hud {
   private toast: HTMLElement;
   private hint: HTMLElement;
   private undoButton: HTMLButtonElement;
+  /** Not the level tip above — this asks the solver for a line. */
+  private hintButton: HTMLButtonElement;
+  private hintBusy = false;
 
   private toastTimer = 0;
   private hintTimer = 0;
@@ -56,6 +61,12 @@ export class Hud {
       attrs: { 'aria-label': 'Take back last shot' },
     });
 
+    this.hintButton = button('💡', callbacks.onHint, {
+      class: 'btn--icon',
+      title: 'Show a line (H)',
+      attrs: { 'aria-label': 'Show a suggested line' },
+    });
+
     this.root = el('div', { class: 'hud' }, [
       el('div', { class: 'hud__top' }, [
         el('div', { class: 'hud__title' }, [this.levelName, this.parLabel]),
@@ -71,6 +82,7 @@ export class Hud {
           this.starHolder,
         ]),
         el('div', { class: 'hud__actions' }, [
+          this.hintButton,
           this.undoButton,
           button('↺', callbacks.onRetry, {
             class: 'btn--icon',
@@ -92,6 +104,13 @@ export class Hud {
       this.clockWrap,
       el('div', { class: 'hud__bottom' }, [this.hint, this.toast]),
     ]);
+  }
+
+  /** Disables the hint button and marks it working while the solver runs. */
+  setHintBusy(busy: boolean): void {
+    this.hintBusy = busy;
+    this.hintButton.disabled = busy;
+    this.hintButton.classList.toggle('btn--busy', busy);
   }
 
   setLevel(level: LevelDef, showHint: boolean): void {
@@ -131,6 +150,8 @@ export class Hud {
     });
 
     this.undoButton.disabled = !session.canUndo;
+    this.hintButton.disabled = this.hintBusy || !session.canShoot;
+    this.hintButton.classList.toggle('btn--busy', this.hintBusy);
 
     // The shot clock only appears once a shot is running long.
     const clock = session.shotClock;

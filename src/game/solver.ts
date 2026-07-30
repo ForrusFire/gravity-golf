@@ -37,6 +37,29 @@ export interface SolveOptions {
   mergeRadius: number;
   /** Nodes carried into the next stroke, best-first by distance to the hole. */
   beamWidth: number;
+  /**
+   * Where to search from. Defaults to the settled tee — a fresh hole. Supply a
+   * live ball position, clock and board to ask "what do I do from *here*",
+   * which is what the in-game hint needs.
+   */
+  from?: SearchStart;
+  /**
+   * Wall-clock ceiling in milliseconds. On expiry the search stops expanding and
+   * returns its best effort so far.
+   *
+   * Deliberately opt-in and never set by verification: a time-bounded search
+   * gives different answers on different machines, and "this hole is
+   * completable" must not depend on how fast the box was. The hint sets it,
+   * because a person is waiting and a bounded answer beats an unbounded wait.
+   */
+  timeBudgetMs?: number;
+}
+
+/** A mid-hole starting point: where the ball is and what the board is doing. */
+export interface SearchStart {
+  position: Vec2;
+  time: number;
+  state: BoardState;
 }
 
 export const DEFAULT_SOLVE_OPTIONS: SolveOptions = {
@@ -68,6 +91,12 @@ export interface SolveResult {
    * that shot was part of a solution. Used to prove no star is stranded.
    */
   starsSeen: Set<string>;
+  /**
+   * Shots leading to the best-scoring rest position the search ever kept, even
+   * when nothing sank. "No solution in three strokes" is not the same as "no
+   * idea what to do", and the hint would rather offer progress than nothing.
+   */
+  bestEffort: Shot[];
 }
 
 type ShotOutcome = 'sink' | 'rest' | 'death' | 'timeout';
@@ -86,6 +115,9 @@ export interface BoardState {
   switchTimers: Readonly<Record<string, number>>;
   breakables: Readonly<Record<string, number>>;
 }
+
+/** Snapshots a live world's mutable state so a search can resume from it. */
+export const boardStateOf = (world: World): BoardState => initialBoardState(world);
 
 const initialBoardState = (world: World): BoardState => ({
   collected: new Set(world.collectibles.filter((c) => c.collected).map((c) => c.id)),
@@ -188,9 +220,10 @@ const stateKey = (state: BoardState): string =>
   ].join('/');
 
 /**
- * Breadth-first beam search over shots, used to prove every shipped hole is
- * actually completable within a sane stroke count. It is a validation tool, not
- * an in-game hint system: it plays far more shots than a person would.
+ * Breadth-first beam search over shots. Its main job is proving every shipped
+ * hole is completable within a sane stroke count; with `from` set it also backs
+ * the in-game hint, answering "is there a way on from here". Either way it plays
+ * far more shots than a person would, so it belongs off the main thread.
  */
 export const solveLevel = (
   level: LevelDef,
@@ -202,13 +235,28 @@ export const solveLevel = (
 
   // The game settles the ball before handing over control, so searching from
   // the authored tee would solve a hole that is not the one being played.
-  const start = settledTee(level);
+  const start = opts.from?.position ?? settledTee(level);
   let frontier: SearchNode[] = [
-    { position: start, time: 0, shots: [], state: initialBoardState(world) },
+    {
+      position: start,
+      time: opts.from?.time ?? 0,
+      shots: [],
+      state: opts.from?.state ?? initialBoardState(world),
+    },
   ];
   let closestApproach = V.distance(start, world.hole.position);
   let simulated = 0;
   const starsSeen = new Set<string>();
+  let bestEffort: Shot[] = [];
+  let bestScore = Infinity;
+  // Second tier: some holes have nothing to land on, so no shot ever comes to
+  // rest and the beam empties on stroke one. A shot that merely got close is
+  // still better advice than none.
+  let nearestEffort: Shot[] = [];
+  let nearestApproach = Infinity;
+  const deadline =
+    opts.timeBudgetMs === undefined ? Infinity : performance.now() + opts.timeBudgetMs;
+  let outOfTime = false;
 
   const required = world.hole.requiresStars ?? 0;
   /**
@@ -233,7 +281,14 @@ export const solveLevel = (
     const candidates: Array<SearchNode & { score: number }> = [];
 
     for (const node of frontier) {
+      if (outOfTime) break;
       for (let a = 0; a < opts.angleSamples; a++) {
+        // Checked per angle rather than per shot: `performance.now()` is not
+        // free, and a whole power sweep is a few milliseconds.
+        if (deadline !== Infinity && performance.now() > deadline) {
+          outOfTime = true;
+          break;
+        }
         const angle = (a / opts.angleSamples) * TAU;
         for (let p = 0; p < opts.powerSamples; p++) {
           const power =
@@ -250,15 +305,32 @@ export const solveLevel = (
 
           const shots = [...node.shots, { angle, power }];
           if (sim.outcome === 'sink') {
-            return { solved: true, strokes: stroke, shots, closestApproach: 0, simulated, starsSeen };
+            return {
+              solved: true,
+              strokes: stroke,
+              shots,
+              closestApproach: 0,
+              simulated,
+              starsSeen,
+              bestEffort: shots,
+            };
+          }
+          if (sim.outcome !== 'death' && sim.closest < nearestApproach) {
+            nearestApproach = sim.closest;
+            nearestEffort = shots;
           }
           if (sim.outcome === 'rest') {
+            const score = scoreNode(sim.position, sim.state);
+            if (score < bestScore) {
+              bestScore = score;
+              bestEffort = shots;
+            }
             candidates.push({
               position: sim.position,
               time: sim.time,
               shots,
               state: sim.state,
-              score: scoreNode(sim.position, sim.state),
+              score,
             });
           }
         }
@@ -292,11 +364,19 @@ export const solveLevel = (
       if (kept.length >= opts.beamWidth * 2) break;
       if (!seenStates.has(stateKey(candidate.state))) take(candidate);
     }
-    if (kept.length === 0) break;
+    if (kept.length === 0 || outOfTime) break;
     frontier = kept;
   }
 
-  return { solved: false, strokes: 0, shots: [], closestApproach, simulated, starsSeen };
+  return {
+    solved: false,
+    strokes: 0,
+    shots: [],
+    closestApproach,
+    simulated,
+    starsSeen,
+    bestEffort: bestEffort.length > 0 ? bestEffort : nearestEffort,
+  };
 };
 
 /**

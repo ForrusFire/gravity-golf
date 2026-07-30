@@ -25,6 +25,7 @@ import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed } from './generator';
 import { LevelGenerator } from './generator-client';
 import { GhostRunner } from './ghost';
+import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
 import { FEATS, PlaySession, type SessionEvent } from './session';
 import { resolveSkin } from './skins';
@@ -85,6 +86,9 @@ export class GameApp {
   private running = false;
   private hintShownFor = new Set<string>();
   private generating = false;
+  /** The suggested line currently on screen, and the shot it came from. */
+  private hintLine: { path: Vec2[]; strokes: number } | null = null;
+  private hintPending = false;
   private disposed = false;
 
   private ghost: GhostRunner | null = null;
@@ -111,6 +115,7 @@ export class GameApp {
       onUndo: () => this.undo(),
       onToggleField: () =>
         this.applySettings({ showGravityField: !this.progress.settings.showGravityField }),
+      onHint: () => void this.requestHint(),
     });
 
     this.container.append(canvas, this.hud.root, this.overlay.root);
@@ -458,6 +463,7 @@ export class GameApp {
     if (!session) return;
     this.aimState = null;
     this.previewCache = null;
+    this.clearHintLine();
     this.trail = [];
     this.handleSessionEvents(session.shoot(direction, power));
   }
@@ -475,6 +481,7 @@ export class GameApp {
     this.trail = [];
     this.aimState = null;
     this.previewCache = null;
+    this.clearHintLine();
     this.cameraOffset = V.ZERO;
     this.manualZoom = 1;
     this.timeScale = 1;
@@ -512,9 +519,76 @@ export class GameApp {
     this.trail = [];
     this.aimState = null;
     this.previewCache = null;
+    this.clearHintLine();
     this.timeScale = 1;
     this.hud.sync(session);
     this.hud.showToast('Shot taken back', 1.2);
+  }
+
+  /**
+   * Asks the solver for a playable line from where the ball is standing, then
+   * draws it and arms the aim to match.
+   *
+   * The aim is a starting point, not a shot: the player can nudge it or ignore
+   * it. What it costs is honesty about the run — a hinted hole still earns its
+   * medal, but not the style feats, and it is not kept as the ghost.
+   */
+  private async requestHint(): Promise<void> {
+    const session = this.session;
+    if (!session || this.hintPending || !session.canShoot || this.screen !== 'play') return;
+
+    this.hintPending = true;
+    this.hud.setHintBusy(true);
+    this.hud.showToast('Looking for a line…', 1.6);
+
+    // Captured before the await: if any of it has moved on by the time the
+    // solver answers, the answer is about a hole that no longer exists.
+    const level = session.level;
+    const position = session.ball.position;
+    const strokes = session.strokes;
+
+    try {
+      const result = await this.generator.hint({
+        level,
+        position,
+        time: session.world.time,
+        state: serializeBoardState(session.world),
+        maxStrokes: Math.max(1, level.par - strokes),
+      });
+
+      if (this.disposed) return;
+      const current = this.session;
+      if (!current || current.level !== level || current.strokes !== strokes || !current.canShoot) {
+        return;
+      }
+
+      if (!result?.shot) {
+        this.hud.showToast('No line found from here — try a restart', 2.4, 'bad');
+        return;
+      }
+
+      const direction = V.fromAngle(result.shot.angle);
+      current.hintsUsed++;
+      this.input.setAim(direction, result.shot.power);
+      const preview = current.predict(direction, result.shot.power, { maxTime: 10 });
+      this.hintLine = { path: preview.points, strokes: result.strokes };
+      this.audio.play('unlock');
+      this.hud.showToast(
+        result.sinks
+          ? `This line sinks it in ${result.strokes}`
+          : 'No sink from here — this is the best line on',
+        2.6,
+        result.sinks ? 'good' : undefined,
+      );
+    } finally {
+      this.hintPending = false;
+      if (!this.disposed) this.hud.setHintBusy(false);
+    }
+  }
+
+  /** Drops the suggested line. It described one shot from one place. */
+  private clearHintLine(): void {
+    this.hintLine = null;
   }
 
   private refitCamera(): void {
@@ -786,6 +860,7 @@ export class GameApp {
     this.input.config.aimMode = settings.aimMode;
     this.applyAudioSettings();
     this.previewCache = null;
+    this.clearHintLine();
   }
 
   private applyAudioSettings(): void {
@@ -855,6 +930,12 @@ export class GameApp {
             this.manualZoom = 1;
           }
           break;
+        case 'KeyH':
+          if (this.screen === 'play') {
+            event.preventDefault();
+            void this.requestHint();
+          }
+          break;
       }
     });
   }
@@ -889,6 +970,7 @@ export class GameApp {
           levelId: '',
           skin: resolveSkin(this.progress.settings.ballSkin, this.progress.totalStars(CAMPAIGN_IDS)),
           ghost: null,
+          hintPath: null,
         },
         { ...options, showGravityField: false },
       );
@@ -910,6 +992,7 @@ export class GameApp {
         ghost && ghost.visible
           ? { position: ghost.position, trail: ghost.trail }
           : null,
+      hintPath: this.screen === 'play' ? (this.hintLine?.path ?? null) : null,
     };
     this.renderer.draw(scene, options);
   }

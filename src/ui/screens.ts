@@ -280,6 +280,13 @@ export const resultsScreen = (
           ),
         )
       : null,
+    // Said plainly rather than hidden: the medal stands, the style awards do not.
+    result.hinted
+      ? el('p', {
+          class: 'results__hinted',
+          text: '💡 Hint used — no feats or ghost recorded for this run',
+        })
+      : null,
     callbacks.previousBest !== null
       ? el('p', { class: 'results__previous', text: `Previous best: ${callbacks.previousBest}` })
       : null,
@@ -665,6 +672,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       helpItem('⛳', 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
       helpItem('☠️', 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke. Anything lethal wears a red serrated corona.'),
       helpItem('↩️', 'Undo', 'Take a shot back any time with Z. Restarting was already free, so undo costs nothing.'),
+      helpItem('💡', 'Stuck?', 'The 💡 button finds a line from where the ball is and sets your aim to match. The hole still counts, but a hinted run earns no style feats and is not kept as your ghost.'),
     ]),
 
     // From chapter 6 on, holes have state. The colour language that carries it
@@ -690,7 +698,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
 
     el('h3', { text: 'Controls' }),
     el('div', { class: 'help' }, [
-      helpItem('⌨️', 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, R restarts, G toggles the field, C recentres, Esc pauses.'),
+      helpItem('⌨️', 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, H asks for a line, R restarts, G toggles the field, C recentres, Esc pauses.'),
       helpItem('🖱️', 'Camera', 'Scroll or pinch to zoom, right-drag or two-finger drag to look around.'),
     ]),
   ]);

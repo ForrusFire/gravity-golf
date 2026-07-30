@@ -156,6 +156,12 @@ export interface HoleResult {
   feats: FeatId[];
   /** The shots taken, so a best run can be replayed as a ghost. */
   shots: ShotRecord[];
+  /**
+   * True when the player asked for a line on this attempt. A hinted run still
+   * counts and still earns its medal — but it does not earn style feats and is
+   * not kept as the ghost, because neither would be the player's own.
+   */
+  hinted: boolean;
 }
 
 export const medalFor = (strokes: number, par: number): Medal => {
@@ -237,6 +243,8 @@ export class PlaySession {
   /** Style tracking for the current shot. */
   private tracker = newFeatTracker();
   private earnedFeats: FeatId[] = [];
+  /** Hints taken on this attempt. Undo does not clear it — it was still seen. */
+  hintsUsed = 0;
 
   constructor(level: LevelDef) {
     this.level = level;
@@ -449,6 +457,7 @@ export class PlaySession {
     this.history = [];
     this.shots = [];
     this.earnedFeats = [];
+    this.hintsUsed = 0;
     this.tracker = newFeatTracker();
   }
 
@@ -587,7 +596,8 @@ export class PlaySession {
           // than a hole in one, so the floor is one.
           const strokes = Math.max(1, this.strokes);
           this.strokes = strokes;
-          this.earnedFeats = this.collectFeats();
+          const hinted = this.hintsUsed > 0;
+          this.earnedFeats = hinted ? [] : this.collectFeats();
           this.result = {
             levelId: this.level.id,
             strokes,
@@ -597,7 +607,9 @@ export class PlaySession {
             time: this.playTime,
             longestShot: this.longestShot,
             feats: this.earnedFeats,
-            shots: this.shotList,
+            // A ghost you race should be a run you played.
+            shots: hinted ? [] : this.shotList,
+            hinted,
           };
           out.push({
             type: 'sunk',

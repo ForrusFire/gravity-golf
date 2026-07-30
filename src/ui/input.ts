@@ -142,6 +142,21 @@ export class InputController {
     this.keyAngle = V.angleOf(this.lastDirection);
   }
 
+  /**
+   * Arms the aim at a specific direction and power, as the hint does. It stays a
+   * normal keyboard aim afterwards, so the player can nudge it or fire it — the
+   * hint hands over a setup, not a shot.
+   */
+  setAim(direction: Vec2, power: number): void {
+    if (!this.callbacks.canShoot()) return;
+    this.dragging = false;
+    this.dragPointerId = null;
+    this.lastDirection = V.normalize(direction);
+    this.keyAngle = V.angleOf(this.lastDirection);
+    this.keyPower = clamp(power, 0, 1);
+    this.keyboardActive = true;
+  }
+
   cancelAim(): void {
     this.dragging = false;
     this.dragPointerId = null;

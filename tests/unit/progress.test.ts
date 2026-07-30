@@ -22,6 +22,7 @@ const result = (overrides: Partial<HoleResult> = {}): HoleResult => ({
   longestShot: 400,
   feats: [],
   shots: [],
+  hinted: false,
   ...overrides,
 });
 

@@ -466,6 +466,63 @@ test.describe('resilience', () => {
   });
 });
 
+test.describe('hints', () => {
+  test('suggests a line, arms the aim, and marks the run as hinted', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await startGame(page);
+    await expect.poll(async () => (await sessionState(page))?.canShoot).toBe(true);
+
+    await page.getByRole('button', { name: 'Show a suggested line' }).click();
+
+    // The solver runs in a worker; the button is disabled until it answers.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const app = window.gravityGolf as unknown as { session: { hintsUsed: number } | null };
+            return app.session?.hintsUsed ?? 0;
+          }),
+        { timeout: 20000 },
+      )
+      .toBe(1);
+
+    // The hint armed an aim, so the shot key alone plays it.
+    await page.locator('canvas').press('Space');
+    await expect.poll(async () => (await sessionState(page))?.strokes, { timeout: 10000 }).toBe(1);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('a hinted run keeps its medal but not its feats', async ({ page }) => {
+    await startGame(page);
+    await expect.poll(async () => (await sessionState(page))?.canShoot).toBe(true);
+
+    // Mark the run hinted, then drop the ball into the cup and let the app's own
+    // loop finish the hole, so this exercises the real completion path.
+    await page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          hintsUsed: number;
+          ball: { position: { x: number; y: number } };
+          world: { hole: { position: { x: number; y: number }; radius: number } };
+        } | null;
+      };
+      const s = app.session!;
+      s.hintsUsed = 1;
+      s.ball.position = {
+        x: s.world.hole.position.x,
+        y: s.world.hole.position.y - s.world.hole.radius * 0.4,
+      };
+    });
+
+    await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.results__hinted')).toContainText('Hint used');
+    // The medal still stands: a hint costs the flourishes, not the score.
+    await expect(page.locator('.results__medal')).toBeVisible();
+    await expect(page.locator('.results__feats')).toHaveCount(0);
+  });
+});
+
 test.describe('state mechanics', () => {
   /** Plays the named hole through the debug hook and waits for control. */
   const openHole = async (page: Page, id: string): Promise<void> => {

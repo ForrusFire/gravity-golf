@@ -35,6 +35,10 @@ npm run dev      # play it at http://localhost:5173
 - **Some cups are sealed.** A cup barred and drawn in amber will not accept the
   ball until you have banked every star, with a pip above it for each one still
   owed.
+- **Stuck? Ask for a line.** The 💡 button runs the solver from wherever the ball
+  is standing and draws a shot worth playing, setting your aim to match. The hole
+  still counts and still earns its medal — a hinted run just earns no style feats
+  and is not kept as your ghost.
 - **Take a shot back** whenever you like. Restarting the hole was already free,
   so undo costs nothing but the tedium of replaying the shots before it.
 - **Race your best run.** Once you have finished a hole, a faint ghost replays
@@ -43,8 +47,8 @@ npm run dev      # play it at http://localhost:5173
   ricochet, a graze past a hazard. Collecting stars unlocks ball skins.
 
 Keyboard: arrows aim and set power, `Space` shoots, `Z` takes back a shot,
-`R` restarts, `G` toggles the gravity overlay, `C` recentres the camera,
-`Esc` pauses.
+`H` asks for a line, `R` restarts, `G` toggles the gravity overlay,
+`C` recentres the camera, `Esc` pauses.
 Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
@@ -156,6 +160,13 @@ Two of the suites are worth calling out:
   exclude the holes that need it most. The beam also reserves slots for distinct
   board states, because the shot that opens a gate usually parks the ball
   somewhere worse and would otherwise be the first thing discarded.
+- **The hint is held to the same standard as the verifier.** It runs the same
+  search at the same timestep, from wherever the ball is standing, so the aim and
+  power it hands over are exactly the ones that produced the line it drew. A
+  cheaper timestep would diverge within one shot and the hint would be a lie. It
+  is the only search allowed a wall-clock budget, because a time-bounded search
+  gives different answers on different machines and "this hole is completable"
+  must not depend on how fast the box was.
 - **Level validation** rejects buried tees, holes sunk inside a body, stars
   outside the play area and duplicate ids — the authoring mistakes that are
   invisible until someone plays the hole.

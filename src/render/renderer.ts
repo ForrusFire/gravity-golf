@@ -51,6 +51,8 @@ export interface Scene {
   skin: BallSkin;
   /** A replay of the player's best run, drawn behind the live ball. */
   ghost: { position: Vec2; trail: Vec2[] } | null;
+  /** The path of a suggested shot, drawn while the hint is on screen. */
+  hintPath: Vec2[] | null;
 }
 
 const overlaps = (a: Aabb, b: Aabb): boolean =>
@@ -148,6 +150,10 @@ export class Renderer {
 
     this.drawCollectibles(ctx, scene, options.palette);
     this.particles.draw(ctx);
+
+    // Above the ghost but below the ball: it is advice about the next shot, not
+    // a record of a past one.
+    if (scene.hintPath) this.drawHintPath(ctx, scene.hintPath, scene.time, options.palette);
 
     // The ghost goes underneath, so it can never be mistaken for the live ball.
     if (scene.ghost) this.drawGhost(ctx, scene.ghost, scene.ballRadius, options.palette);
@@ -859,6 +865,42 @@ export class Renderer {
       }
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The line the hint suggests. Gold and marching, so it is obviously an
+   * annotation rather than the aim guide the player is driving themselves.
+   */
+  private drawHintPath(
+    ctx: CanvasRenderingContext2D,
+    path: Vec2[],
+    time: number,
+    palette: Palette,
+  ): void {
+    if (path.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = palette.collectible;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2.4 / this.camera.zoom;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([11 / this.camera.zoom, 8 / this.camera.zoom]);
+    ctx.lineDashOffset = -time * 44;
+    ctx.beginPath();
+    ctx.moveTo(path[0]!.x, path[0]!.y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i]!.x, path[i]!.y);
+    ctx.stroke();
+
+    // A dot at the far end, so the line has a destination rather than just
+    // trailing off the screen.
+    const end = path[path.length - 1]!;
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.collectible;
+    ctx.beginPath();
+    ctx.arc(end.x, end.y, 4.5 / this.camera.zoom, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
 
