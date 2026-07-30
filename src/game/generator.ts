@@ -3,15 +3,18 @@ import { Rng, hashSeed } from '../core/rng';
 import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
 import { bodyShapeAt, closestSurfacePoint, rectPolygon } from '../physics/geometry';
-import type { Body } from '../physics/types';
+import type { Body, SwitchSpec } from '../physics/types';
 import {
   BALL_RADIUS,
   blackHole,
   bumper,
   compileLevel,
+  crystal,
+  gate,
   planet,
   rock,
   sun,
+  switchPad,
   validateLevel,
   wall,
   type LevelDef,
@@ -26,15 +29,31 @@ const LEDGE_Y = 330;
  * generated levels a recognisable structure — purely random body placement
  * reads as noise, not as a hole someone designed.
  *
- * Every archetype is built from static bodies only. With nothing moving, the
- * simulation depends solely on the ball's state, so the solution the generator
- * verified is exactly the solution a player can replay. A spinning arm would
- * make the outcome depend on the clock, and a hole that is only completable at
- * one instant is not a hole that was verified.
+ * Nothing here moves on a clock. Switches, gates and breakable blocks are fair
+ * game — they change only in response to the ball, and the solver carries that
+ * state along each branch, so the solution it verified is exactly the solution a
+ * player can replay. A spinning arm or a timed pad would make the outcome depend
+ * on *when* the shot was taken, and a hole that is only completable at one
+ * instant is not a hole that was verified.
  */
-type Archetype = 'slingshot' | 'corridor' | 'minefield' | 'binary' | 'pinball';
+type Archetype =
+  | 'slingshot'
+  | 'corridor'
+  | 'minefield'
+  | 'binary'
+  | 'pinball'
+  | 'vault'
+  | 'glasshouse';
 
-const ARCHETYPES: Archetype[] = ['slingshot', 'corridor', 'minefield', 'binary', 'pinball'];
+const ARCHETYPES: Archetype[] = [
+  'slingshot',
+  'corridor',
+  'minefield',
+  'binary',
+  'pinball',
+  'vault',
+  'glasshouse',
+];
 
 export interface GeneratedLevel extends LevelDef {
   /** The seed this hole was generated from. */
@@ -75,6 +94,7 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
     ledge('ledge-tee', teeX, 130),
     ledge('ledge-hole', holeX, 130),
   ];
+  const switches: SwitchSpec[] = [];
 
   /** Keeps generated obstacles out of the tee and hole pockets. */
   const clearOfEnds = (p: Vec2, radius: number): boolean =>
@@ -131,6 +151,27 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
       }
       break;
     }
+    case 'vault': {
+      // The mandatory blocker becomes a gate below, so all this archetype adds
+      // is something to slingshot around on the way to the pad.
+      const r = rng.range(70, 100);
+      bodies.push(
+        planet('core', V.vec(rng.range(-120, 60), rng.range(-40, 140)), r, rng.range(650, 900), {
+          range: r * 5,
+        }),
+      );
+      break;
+    }
+    case 'glasshouse': {
+      bodies.push(
+        planet('pull', V.vec(rng.range(-340, -190), rng.range(-180, 80)), 66, rng.range(600, 800), {
+          range: 400,
+          style: 'moon',
+        }),
+      );
+      placeBody((id, at, r) => bumper(id, at, r), rng.range(34, 46), 'bump-a');
+      break;
+    }
     case 'pinball': {
       for (let i = 0; i < 5; i++) {
         placeBody((id, at, r) => bumper(id, at, r), rng.range(32, 46), `bump-${i}`);
@@ -171,7 +212,46 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
       break;
     }
   }
-  bodies.push(wall('blocker', V.vec(blockerX, 430), V.vec(blockerX, blockerTop), 12));
+  if (archetype === 'vault') {
+    // Sealed rather than solid: the way through is a pad, not a lofted shot.
+    bodies.push(gate('blocker', V.vec(blockerX, 430), V.vec(blockerX, blockerTop), 'sw-vault'));
+    // On the tee side of the gate, or it could only be reached by going through it.
+    for (let i = 0; i < 60; i++) {
+      const at = V.vec(rng.range(teeX + 90, blockerX - 90), rng.range(-330, 260));
+      const clear = bodies.every(
+        (b) => b.id.startsWith('ledge-') || V.distance(bodyCentre(b), at) > bodyRadius(b) + 50,
+      );
+      if (clear && V.distance(at, tee) > 90) {
+        switches.push(switchPad('sw-vault', at, 32));
+        break;
+      }
+    }
+    // No reachable spot for the pad means the gate can never open.
+    if (switches.length === 0) {
+      bodies.pop();
+      bodies.push(wall('blocker', V.vec(blockerX, 430), V.vec(blockerX, blockerTop), 12));
+    }
+  } else {
+    bodies.push(wall('blocker', V.vec(blockerX, 430), V.vec(blockerX, blockerTop), 12));
+
+    if (archetype === 'glasshouse') {
+      // Stacked on top of the blocker, so going over means going a long way up
+      // and going through means spending hits on the way.
+      let y = blockerTop - 46;
+      for (let i = 0; i < 2; i++) {
+        const at = V.vec(blockerX, y);
+        const fouls = bodies.some(
+          (b) =>
+            !b.id.startsWith('ledge-') &&
+            b.id !== 'blocker' &&
+            V.distance(bodyCentre(b), at) < bodyRadius(b) + 60,
+        );
+        if (at.y - 44 < BOUNDS.minY + 20) break;
+        if (!fouls) bodies.push(crystal(`pane-${i}`, at, 44, i === 0 ? 1 : 2));
+        y -= 92;
+      }
+    }
+  }
 
   // Stars in open space, spread across the hole so collecting all three means
   // taking a different line rather than the same one three times.
@@ -205,6 +285,7 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
     boundsMode: 'kill',
     ambientDrag: 0.11,
     bodies,
+    switches,
     stars,
     seed,
     archetype,
@@ -328,6 +409,8 @@ const NAMES: Record<Archetype, string[]> = {
   minefield: ['Scatter', 'Debris', 'Cluster'],
   binary: ['Two Bodies', 'Pairing', 'Twin Pull'],
   pinball: ['Ricochet', 'Bounce House', 'Kickabout'],
+  vault: ['Locked Room', 'The Key', 'Strongbox'],
+  glasshouse: ['Panes', 'Break Point', 'Shatterline'],
 };
 
 const nameFor = (archetype: Archetype, seed: number): string => {

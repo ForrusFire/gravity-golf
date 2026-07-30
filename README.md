@@ -81,9 +81,15 @@ Generated holes are held to the same bar as handmade ones: a candidate is only
 accepted if it validates *and* the solver can finish it, and its par is
 whatever the solver actually needed rather than a guess. Verification takes a
 second or two, so it runs in a Web Worker and the daily is cached after its
-first generation. Generated holes use only static bodies, which keeps the
-verified solution exactly reproducible — a hole that is completable only at one
-instant of a spinning arm's cycle is not a hole that was verified.
+first generation.
+
+Seven archetypes keep them recognisable as designed holes rather than noise —
+slingshot, corridor, minefield, binary, pinball, vault (the blocker is a gate
+you have to find the pad for) and glasshouse (break through, or go a long way
+over). They react to the ball but never to the clock, which is what keeps the
+verified solution exactly reproducible: a hole completable only at one instant
+of a spinning arm's cycle is not a hole that was verified, so nothing moving and
+no timed pads.
 
 ## How it is put together
 

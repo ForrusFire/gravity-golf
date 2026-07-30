@@ -86,12 +86,34 @@ describe('generateLevel', () => {
     }
   });
 
+  it('never gates a hole behind a switch the ball cannot reach', () => {
+    // A gate keyed to a pad that was never placed would be an unopenable wall.
+    for (const level of generated) {
+      const gated = (level.bodies ?? []).filter((b) => b.removedBy !== undefined);
+      const padIds = new Set((level.switches ?? []).map((sw) => sw.id));
+      for (const body of gated) {
+        const keys = typeof body.removedBy === 'string' ? [body.removedBy] : body.removedBy!;
+        for (const key of keys) expect(padIds.has(key)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps generated holes free of clock-dependent state', () => {
+    // The verified solution only replays if the hole reacts to the ball rather
+    // than to the time on the clock, so no motion and no held switches.
+    for (const level of generated) {
+      for (const body of level.bodies ?? []) expect(body.motion).toBeUndefined();
+      for (const pad of level.switches ?? []) expect(pad.holdTime).toBeUndefined();
+    }
+  });
+
   it('serialises to JSON and back without losing anything', () => {
     const level = generated[0]!;
     const round = JSON.parse(JSON.stringify(level)) as GeneratedLevel;
     expect(round.id).toBe(level.id);
     expect(round.par).toBe(level.par);
     expect(compileLevel(round).bodies).toHaveLength(compileLevel(level).bodies.length);
+    expect(compileLevel(round).switches).toHaveLength(compileLevel(level).switches.length);
     // Cached daily holes travel through localStorage as JSON.
     expect(validateLevel(round).filter((i) => i.severity === 'error')).toEqual([]);
   });
