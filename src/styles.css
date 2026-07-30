@@ -640,6 +640,32 @@ body.loading::after {
   flex-shrink: 0;
 }
 
+.help__swatch {
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0.22rem auto 0;
+  border-radius: 4px;
+  /* A ring, so a swatch stays visible against both panel and high-contrast. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.help h3 {
+  margin: 1.5rem 0 0.1rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.screen > h3 {
+  margin: 1.5rem 0 0.1rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
 .help__item h4 {
   margin: 0 0 0.15rem;
   font-size: 0.95rem;

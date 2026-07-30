@@ -663,8 +663,34 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       helpItem('🪐', 'Gravity', 'Planets bend your shot. The faint field lines show which way space pulls at every point.'),
       helpItem('⭐', 'Stars', 'Three stars are hidden on every hole. They only count if the ball survives the shot.'),
       helpItem('⛳', 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
-      helpItem('☠️', 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke.'),
-      helpItem('⌨️', 'Keyboard', 'Arrow keys aim and set power, Space shoots, R restarts, G toggles the field, Esc pauses.'),
+      helpItem('☠️', 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke. Anything lethal wears a red serrated corona.'),
+      helpItem('↩️', 'Undo', 'Take a shot back any time with Z. Restarting was already free, so undo costs nothing.'),
+    ]),
+
+    // From chapter 6 on, holes have state. The colour language that carries it
+    // has to be written down somewhere the player can find it.
+    el('h3', { text: 'Machinery' }),
+    el('div', { class: 'help' }, [
+      // Pads and crystal share the violet family on purpose: one is a ring you
+      // pass through and the other a solid you hit, so they can never be
+      // mistaken for each other, and a sixth hue would cost more than it buys.
+      helpSwatch('#c792ff', 'Violet is machinery', 'A dashed ring on the ground is a switch pad — roll through it to open a gate or drop a bridge. A bridge that has not appeared yet is drawn as an outline.'),
+      helpItem('⏱️', 'Timed pads', 'A pad with a ring around it springs back when the ring runs out, so whatever it opened is only open while the ball is still moving. Some vaults need every pad thrown at once.'),
+      helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),
+      helpItem('🔒', 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
+      helpSwatch('#8fdcf5', 'Membranes', 'Chevrons show the one direction you may cross. There is no coming back through one.'),
+    ]),
+
+    el('h3', { text: 'Reading the field' }),
+    el('div', { class: 'help' }, [
+      helpSwatch('#ff7ae0', 'Pink', 'Gravity is reversed inside. The chevrons rise, because everything else does too.'),
+      helpSwatch('#ffa05a', 'Amber', 'Gravity is stronger inside. Skirt it, or commit to it.'),
+      helpSwatch('#78ffd2', 'Green', 'Gravity is weaker inside — near enough to a dead calm.'),
+    ]),
+
+    el('h3', { text: 'Controls' }),
+    el('div', { class: 'help' }, [
+      helpItem('⌨️', 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, R restarts, G toggles the field, C recentres, Esc pauses.'),
       helpItem('🖱️', 'Camera', 'Scroll or pinch to zoom, right-drag or two-finger drag to look around.'),
     ]),
   ]);
@@ -672,5 +698,17 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
 const helpItem = (glyph: string, title: string, body: string): HTMLElement =>
   el('div', { class: 'help__item' }, [
     el('span', { class: 'help__glyph', text: glyph }),
+    el('div', {}, [el('h4', { text: title }), el('p', { text: body })]),
+  ]);
+
+/**
+ * A legend row whose glyph is the actual colour being described. The colour is
+ * the thing being taught, so an emoji stand-in would defeat the purpose.
+ */
+const helpSwatch = (color: string, title: string, body: string): HTMLElement =>
+  el('div', { class: 'help__item' }, [
+    el('span', { class: 'help__glyph' }, [
+      el('i', { class: 'help__swatch', style: { background: color } }),
+    ]),
     el('div', {}, [el('h4', { text: title }), el('p', { text: body })]),
   ]);

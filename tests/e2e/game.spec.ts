@@ -365,6 +365,14 @@ test.describe('menus', () => {
     await page.getByRole('button', { name: 'How to play' }).click();
     await expect(page.getByRole('heading', { name: 'How to play' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Gravity' })).toBeVisible();
+    // The colour language the later chapters depend on has to be documented.
+    // Exact: "Violet is machinery" would otherwise match "Machinery" too.
+    await expect(page.getByRole('heading', { name: 'Machinery', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Reading the field', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sealed cups', exact: true })).toBeVisible();
+    await expect(page.locator('.help__swatch')).toHaveCount(6);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByRole('heading', { name: /GRAVITY/ })).toBeVisible();
   });
