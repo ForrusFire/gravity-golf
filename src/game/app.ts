@@ -20,6 +20,7 @@ import {
   settingsScreen,
   titleScreen,
 } from '../ui/screens';
+import { holePositionAt } from '../physics/world';
 import { BALL_RADIUS, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed } from './generator';
@@ -232,7 +233,7 @@ export class GameApp {
 
     if (session.state === 'flying' && !this.progress.settings.reducedMotion) {
       const hole = session.world.hole;
-      const distance = V.distance(session.ball.position, hole.position);
+      const distance = V.distance(session.ball.position, holePositionAt(session.world));
       const speed = V.length(session.ball.velocity);
       const nearCup = distance < hole.radius * SLOWMO_RADII;
       // Only slow down when a drop is plausible; a screamer flying past the cup
@@ -284,7 +285,7 @@ export class GameApp {
     if (session.state !== 'flying') {
       // While aiming, lean the view toward the hole so the player can see where
       // they are shooting. Capped by the viewport so the ball never slides off.
-      const lead = V.sub(session.world.hole.position, focus);
+      const lead = V.sub(holePositionAt(session.world), focus);
       const maxLead = (camera.viewportWidth / Math.max(camera.zoom, 0.01)) * 0.22;
       focus = V.add(focus, V.clampLength(V.mul(lead, 0.35), maxLead));
     }
@@ -451,7 +452,7 @@ export class GameApp {
 
         case 'sunk': {
           this.audio.play('sink');
-          particles.sinkCelebration(session.world.hole.position, palette.holeRim);
+          particles.sinkCelebration(holePositionAt(session.world), palette.holeRim);
           if (shakeAllowed) camera.shake(4, 0.3);
           const feat = event.result.feats[0];
           if (feat) this.hud.showToast(FEATS[feat].label, 2.4, 'good');

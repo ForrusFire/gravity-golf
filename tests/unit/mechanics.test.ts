@@ -6,6 +6,8 @@ import {
   createBall,
   createBallRuntime,
   createWorld,
+  holePositionAt,
+  holeVelocityAt,
   isBodyActive,
   launchBall,
   stepWorld,
@@ -517,5 +519,107 @@ describe('boost rings', () => {
       boosters: [{ id: 'r', position: V.vec(0, 0), radius: 30, direction: V.vec(1, 0), speed: 0 }],
     });
     expect(dead.some((i) => i.severity === 'error' && i.message.includes('exit speed'))).toBe(true);
+  });
+});
+
+describe('moving cups', () => {
+  /** A cup sliding back and forth along y = 0 between x = 200 and x = 600. */
+  const slidingHole = (period: number) => ({
+    position: V.vec(200, 0),
+    motion: {
+      kind: 'oscillate' as const,
+      from: V.vec(200, 0),
+      to: V.vec(600, 0),
+      period,
+      phase: 0,
+    },
+    radius: 20,
+    captureSpeed: 260,
+  });
+
+  it('reports where the cup is now, not where it started', () => {
+    const world = makeWorld({ hole: slidingHole(4) });
+    expect(holePositionAt(world, 0).x).toBeCloseTo(200, 3);
+    expect(holePositionAt(world, 2).x).toBeCloseTo(600, 3);
+    expect(holePositionAt(world, 4).x).toBeCloseTo(200, 3);
+    // Static holes must be completely unaffected by the clock.
+    const still = makeWorld({});
+    expect(holePositionAt(still, 99)).toEqual(still.hole.position);
+    expect(holeVelocityAt(still, 99)).toEqual(V.ZERO);
+  });
+
+  it('captures a ball that meets it, wherever it has got to', () => {
+    const world = makeWorld({ hole: slidingHole(4) });
+    // Two seconds in the cup is at x = 600, nowhere near where it started.
+    world.time = 2;
+    const ball = createBall(V.vec(600, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    const events = run(world, ball, runtime, 0.2);
+    expect(events.some((e) => e.type === 'sink')).toBe(true);
+    expect(runtime.sunk).toBe(true);
+  });
+
+  it('will not swallow a ball parked on its track', () => {
+    // The degenerate strategy a moving cup invites: sit on the rails and let the
+    // cup drive over you. Capture is measured against the cup, so a fast cup
+    // sweeping a still ball is a near miss, not a hole in one.
+    const world = makeWorld({ hole: slidingHole(1.4) });
+    const ball = createBall(V.vec(400, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    const events = run(world, ball, runtime, 3);
+    expect(runtime.sunk).toBe(false);
+    expect(events.some((e) => e.type === 'lipout')).toBe(true);
+  });
+
+  it('still lets a slow cup collect a still ball', () => {
+    // The same rule, the other way round: creep the cup along and it does drop.
+    const world = makeWorld({ hole: slidingHole(30) });
+    const ball = createBall(V.vec(220, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    run(world, ball, runtime, 3);
+    expect(runtime.sunk).toBe(true);
+  });
+
+  it('rejects a cup whose declared position is not where its path starts', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: {
+        position: V.vec(0, 0),
+        motion: {
+          kind: 'oscillate',
+          from: V.vec(100, 0),
+          to: V.vec(200, 0),
+          period: 4,
+          phase: 0,
+        },
+      },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    };
+    const issues = validateLevel(base);
+    expect(issues.some((i) => i.severity === 'error' && i.message.includes('motion starts'))).toBe(
+      true,
+    );
+  });
+
+  it('rejects a cup that leaves the field part-way round its lap', () => {
+    const issues = validateLevel({
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: {
+        position: V.vec(0, -900),
+        motion: { kind: 'orbit', center: V.vec(0, 0), radius: 900, speed: 1, phase: -Math.PI / 2 },
+      },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    });
+    expect(issues.some((i) => i.message.includes('outside the level bounds'))).toBe(true);
   });
 });

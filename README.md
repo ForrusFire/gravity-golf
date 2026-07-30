@@ -21,6 +21,9 @@ npm run dev      # play it at http://localhost:5173
 - **Three stars** are hidden on every hole. They only count if the ball
   survives the shot that collected them.
 - **Arrive slowly.** A ball that reaches the cup too fast rims out.
+- **Some cups move**, along a dashed track that shows the whole lap. What counts
+  is your speed *relative to the cup* — parking on the rails and letting it drive
+  over you is a lip-out, not a hole in one.
 - **Hazards** — suns, black holes, spikes — destroy the ball and cost a penalty
   stroke. Anything lethal is drawn with a red serrated corona.
 - **Change the course.** Roll through a violet switch pad to open a gate or drop
@@ -56,7 +59,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-54 holes across nine chapters, each introducing one idea at a time:
+60 holes across ten chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -69,6 +72,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 7. Inversion | Reversed, amplified and cancelled gravity |
 | 8. Clockwork | Timed gates, one-way membranes, multi-lock vaults |
 | 9. Launch Control | Boost rings — the route becomes a relay |
+| 10. Moving Targets | The cup itself travels; the puzzle becomes *when* |
 
 Chapters 1–5 are pure ballistics: you read the field and pick a line. From
 chapter 6 the hole itself has state, and a shot can change it — which is why

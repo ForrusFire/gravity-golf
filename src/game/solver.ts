@@ -5,6 +5,7 @@ import type { Ball } from '../physics/types';
 import {
   createBall,
   createBallRuntime,
+  holePositionAt,
   launchBall,
   stepWorld,
   type SimEvent,
@@ -171,7 +172,10 @@ const simulateShot = (
 
   const events: SimEvent[] = [];
   const steps = Math.round(opts.shotTime / opts.timeStep);
-  let closest = V.distance(from, world.hole.position);
+  // Resolved per step: on a moving hole the cup is somewhere else by the time
+  // the ball arrives, and measuring against its start would score every shot
+  // against a target that is not there.
+  let closest = V.distance(from, holePositionAt(sandbox, startTime));
   const stars: string[] = [];
 
   const finish = (outcome: ShotOutcome, closestDistance: number): ShotSim => ({
@@ -187,7 +191,7 @@ const simulateShot = (
     events.length = 0;
     stepWorld(sandbox, ball, runtime, events);
     for (const event of events) if (event.type === 'collect') stars.push(event.id);
-    closest = Math.min(closest, V.distance(ball.position, world.hole.position));
+    closest = Math.min(closest, V.distance(ball.position, holePositionAt(sandbox)));
     if (runtime.sunk) return finish('sink', 0);
     if (!runtime.alive) return finish('death', closest);
     if (ball.atRest) return finish('rest', closest);
@@ -245,7 +249,7 @@ export const solveLevel = (
       state: opts.from?.state ?? initialBoardState(world),
     },
   ];
-  let closestApproach = V.distance(start, world.hole.position);
+  let closestApproach = V.distance(start, holePositionAt(world, opts.from?.time ?? 0));
   let simulated = 0;
   const starsSeen = new Set<string>();
   let bestEffort: Shot[] = [];
@@ -265,7 +269,7 @@ export const solveLevel = (
    * are the objective and parking next to a cup that will not open is no
    * progress at all.
    */
-  const scoreNode = (position: Vec2, state: BoardState): number => {
+  const scoreNode = (position: Vec2, state: BoardState, time: number): number => {
     const held = state.collected.size;
     if (required > 0 && held < required) {
       let nearest = Infinity;
@@ -275,7 +279,7 @@ export const solveLevel = (
       }
       return (required - held) * 100000 + (Number.isFinite(nearest) ? nearest : 0);
     }
-    return V.distance(position, world.hole.position);
+    return V.distance(position, holePositionAt(world, time));
   };
 
   for (let stroke = 1; stroke <= opts.maxStrokes; stroke++) {
@@ -321,7 +325,7 @@ export const solveLevel = (
             nearestEffort = shots;
           }
           if (sim.outcome === 'rest') {
-            const score = scoreNode(sim.position, sim.state);
+            const score = scoreNode(sim.position, sim.state, sim.time);
             if (score < bestScore) {
               bestScore = score;
               bestEffort = shots;

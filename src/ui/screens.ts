@@ -670,6 +670,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       helpItem('🪐', 'Gravity', 'Planets bend your shot. The faint field lines show which way space pulls at every point.'),
       helpItem('⭐', 'Stars', 'Three stars are hidden on every hole. They only count if the ball survives the shot.'),
       helpItem('⛳', 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
+      helpItem('🎯', 'Moving cups', 'Some cups travel along a dashed track. What matters is your speed relative to the cup, so parking on the rails and waiting will not do it.'),
       helpItem('☠️', 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke. Anything lethal wears a red serrated corona.'),
       helpItem('↩️', 'Undo', 'Take a shot back any time with Z. Restarting was already free, so undo costs nothing.'),
       helpItem('💡', 'Stuck?', 'The 💡 button finds a line from where the ball is and sets your aim to match. The hole still counts, but a hinted run earns no style feats and is not kept as your ghost.'),

@@ -8,6 +8,7 @@ import { CHAPTER_6 } from './chapter6';
 import { CHAPTER_7 } from './chapter7';
 import { CHAPTER_8 } from './chapter8';
 import { CHAPTER_9 } from './chapter9';
+import { CHAPTER_10 } from './chapter10';
 
 export interface Chapter {
   index: number;
@@ -81,6 +82,13 @@ export const CHAPTERS: Chapter[] = [
     subtitle: 'Boost rings that fire you where they please',
     starsRequired: 92,
     levels: CHAPTER_9,
+  },
+  {
+    index: 9,
+    name: 'Moving Targets',
+    subtitle: 'The cup itself will not stand still',
+    starsRequired: 110,
+    levels: CHAPTER_10,
   },
 ];
 

@@ -1,9 +1,11 @@
+import { TAU } from '../core/math';
 import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
 import {
   bodyShapeAt,
   closestSurfacePoint,
   containsPoint,
+  motionOffset,
   shapeCenter,
   type Aabb,
 } from '../physics/geometry';
@@ -11,6 +13,7 @@ import {
   DEFAULT_PHYSICS,
   type Body,
   type Booster,
+  type MotionSpec,
   type Portal,
   type SwitchSpec,
   type Zone,
@@ -28,6 +31,12 @@ export interface LevelDef {
   tee: Vec2;
   hole: {
     position: Vec2;
+    /**
+     * Optional path the cup travels. `position` must be where the path starts;
+     * validation checks that, so the level file cannot say one thing and the
+     * game do another.
+     */
+    motion?: MotionSpec;
     radius?: number;
     captureSpeed?: number;
     /** Stars needed in hand before the cup will accept the ball. */
@@ -90,6 +99,7 @@ export const compileLevel = (level: LevelDef): World =>
     })),
     hole: {
       position: level.hole.position,
+      motion: level.hole.motion,
       radius: levelHoleRadius(level),
       captureSpeed: level.hole.captureSpeed ?? DEFAULT_CAPTURE_SPEED,
       requiresStars: level.hole.requiresStars ?? 0,
@@ -138,6 +148,27 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
 
   const holeRadius = levelHoleRadius(level);
   if (holeRadius < BALL_RADIUS + 2) err(`hole radius ${holeRadius} is too small for the ball`);
+
+  if (level.hole.motion) {
+    // Authored position and path start must agree, or the level data reads as a
+    // lie: everything at runtime follows the path.
+    const start = motionOffset(level.hole.motion, 0);
+    if (V.distance(start, level.hole.position) > 1) {
+      err('hole position does not match where its motion starts');
+    }
+    if (level.hole.motion.kind === 'spin') {
+      err('a spinning hole goes nowhere — use orbit or oscillate');
+    }
+    // Sampled around the cycle: a cup that leaves the field is unreachable for
+    // part of every lap, which reads as the game cheating.
+    for (let i = 0; i < 24; i++) {
+      const at = motionOffset(level.hole.motion, (i / 24) * holeCycleSeconds(level.hole.motion));
+      if (!inBounds(b, at)) {
+        err('hole travels outside the level bounds');
+        break;
+      }
+    }
+  }
 
   if (V.distance(level.tee, level.hole.position) < holeRadius * 3) {
     warn('tee is almost on top of the hole');
@@ -271,6 +302,13 @@ export const validateLevels = (levels: readonly LevelDef[]): ValidationIssue[] =
 };
 
 /* ----------------------------------------------------------- authoring DSL */
+
+/** One full lap of a moving cup's path, in seconds. */
+const holeCycleSeconds = (motion: MotionSpec): number => {
+  if (motion.kind === 'orbit') return Math.abs(motion.speed) > 1e-6 ? TAU / Math.abs(motion.speed) : 0;
+  if (motion.kind === 'oscillate') return motion.period;
+  return 0;
+};
 
 /** Terse constructors so level data reads like a description of the hole. */
 export const planet = (

@@ -6,6 +6,7 @@ import {
   bodyVelocityAt,
   closestSurfacePoint,
   containsPoint,
+  motionOffset,
   shapeCenter,
   shapeRadius,
   type Aabb,
@@ -16,6 +17,7 @@ import {
   type Ball,
   type Body,
   type MaterialId,
+  type MotionSpec,
   type PhysicsConfig,
   type Booster,
   type Portal,
@@ -24,7 +26,13 @@ import {
 } from './types';
 
 export interface Hole {
+  /** Where the cup sits at t=0. With `motion` set this is derived from it. */
   position: Vec2;
+  /**
+   * Optional path the cup travels. Everything that reads the cup's location must
+   * go through `holePositionAt`, or half the game will aim at where it started.
+   */
+  motion?: MotionSpec;
   radius: number;
   /** The ball only drops if it enters slower than this. Faster balls lip out. */
   captureSpeed: number;
@@ -87,6 +95,20 @@ export interface World {
   /** Bumped when switch or breakable state changes; invalidates the cache. */
   revision?: number;
 }
+
+/** Where the cup is at time `t`. Static holes ignore `t` entirely. */
+export const holePositionAt = (world: World, t = world.time): Vec2 =>
+  world.hole.motion ? motionOffset(world.hole.motion, t) : world.hole.position;
+
+/** How fast the cup itself is travelling at time `t`. Zero for a static hole. */
+export const holeVelocityAt = (world: World, t = world.time): Vec2 => {
+  const motion = world.hole.motion;
+  if (!motion || motion.kind === 'spin') return V.ZERO;
+  const h = 1 / 600;
+  const before = motionOffset(motion, t - h);
+  const after = motionOffset(motion, t + h);
+  return { x: (after.x - before.x) / (2 * h), y: (after.y - before.y) / (2 * h) };
+};
 
 /**
  * Whether a body currently exists. Gated bodies let a switch open a barrier or
@@ -617,8 +639,13 @@ const checkHole = (
   events: SimEvent[],
 ): boolean => {
   const hole = world.hole;
-  const dist = V.distance(ball.position, hole.position);
-  const speed = V.length(ball.velocity);
+  const holeAt = holePositionAt(world);
+  const dist = V.distance(ball.position, holeAt);
+  // Speed *relative to the cup*. On a moving hole the absolute speed is the
+  // wrong question: it would let a player park the ball on the track and let the
+  // cup drive over and swallow it, which beats every moving hole without a plan.
+  // For a static cup this is exactly the ball's own speed, as before.
+  const speed = V.length(V.sub(ball.velocity, holeVelocityAt(world)));
 
   // A locked cup refuses the ball until enough stars are in hand.
   const required = hole.requiresStars ?? 0;
@@ -629,7 +656,7 @@ const checkHole = (
       // of steps, and one refusal per arrival is the honest signal.
       const inside = dist <= hole.radius;
       if (inside && !runtime.inLockedCup) {
-        events.push({ type: 'locked', position: hole.position, needed: required - held });
+        events.push({ type: 'locked', position: holeAt, needed: required - held });
       }
       runtime.inLockedCup = inside;
       return false;
@@ -647,14 +674,14 @@ const checkHole = (
     const slowness = clamp(1 - speed / (hole.captureSpeed * 1.6), 0, 1);
     const pull = closeness * slowness * 1400;
     if (pull > 0) {
-      const dir = V.normalize(V.sub(hole.position, ball.position));
+      const dir = V.normalize(V.sub(holeAt, ball.position));
       ball.velocity = V.addScaled(ball.velocity, dir, pull * dt);
     }
   }
 
   if (dist <= hole.radius) {
     if (speed <= hole.captureSpeed) {
-      events.push({ type: 'sink', position: hole.position, speed });
+      events.push({ type: 'sink', position: holeAt, speed });
       return true;
     }
     events.push({ type: 'lipout', position: ball.position, speed });
@@ -784,7 +811,9 @@ export const stepWorld = (
     if (checkHole(world, ball, runtime, h, events)) {
       runtime.sunk = true;
       ball.velocity = V.ZERO;
-      ball.position = world.hole.position;
+      // Snap to where the cup is *now*, which on a moving hole is not where
+      // it started.
+      ball.position = holePositionAt(world);
       return;
     }
 

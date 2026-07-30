@@ -12,7 +12,7 @@ import {
   type Aabb,
 } from '../physics/geometry';
 import { MATERIALS, type Body, type Shape, type Zone } from '../physics/types';
-import { gravityAt, isBodyActive, type World } from '../physics/world';
+import { gravityAt, holePositionAt, isBodyActive, type World } from '../physics/world';
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
 import { colorsForBody, powerColor, type Palette } from './palette';
@@ -191,7 +191,7 @@ export class Renderer {
     scene: Scene,
     palette: Palette,
   ): void {
-    const hole = scene.world.hole.position;
+    const hole = holePositionAt(scene.world);
     const screen = this.camera.worldToScreen(hole);
     const margin = 46;
     const onScreen =
@@ -995,8 +995,13 @@ export class Renderer {
     time: number,
     palette: Palette,
   ): void {
-    const { position, radius } = world.hole;
+    const radius = world.hole.radius;
+    // Never `hole.position`: on a moving hole that is only where it started.
+    const position = holePositionAt(world);
     ctx.save();
+
+    // A cup that moves without a visible path is not a puzzle, it is a guess.
+    if (world.hole.motion) this.drawHolePath(ctx, world, palette);
 
     // A cup that will not accept the ball yet has to say so before the player
     // wastes a stroke finding out. Amber rather than green, plus a bar across
@@ -1089,6 +1094,36 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
+    ctx.restore();
+  }
+
+  /** The track a moving cup runs along, sampled straight from its motion. */
+  private drawHolePath(ctx: CanvasRenderingContext2D, world: World, palette: Palette): void {
+    const motion = world.hole.motion;
+    if (!motion) return;
+    const period =
+      motion.kind === 'orbit'
+        ? Math.abs(motion.speed) > 1e-6
+          ? TAU / Math.abs(motion.speed)
+          : 0
+        : motion.kind === 'oscillate'
+          ? motion.period
+          : 0;
+    if (period <= 0) return;
+
+    ctx.save();
+    ctx.strokeStyle = palette.holeRim;
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 1.6 / this.camera.zoom;
+    ctx.setLineDash([7 / this.camera.zoom, 7 / this.camera.zoom]);
+    ctx.beginPath();
+    const samples = 64;
+    for (let i = 0; i <= samples; i++) {
+      const p = holePositionAt(world, (i / samples) * period);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
     ctx.restore();
   }
 
