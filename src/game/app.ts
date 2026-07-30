@@ -25,6 +25,12 @@ import { BALL_RADIUS, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed } from './generator';
 import { LevelGenerator } from './generator-client';
+import {
+  linkForLevel,
+  parseDeepLink,
+  shareUrl,
+  type DeepLink,
+} from './deeplink';
 import { GhostRunner } from './ghost';
 import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
@@ -146,7 +152,83 @@ export class GameApp {
     window.addEventListener('resize', this.handleResize);
     document.addEventListener('visibilitychange', this.handleVisibility);
 
-    this.showTitle();
+    // A shared link goes straight to the hole it names; the title screen is what
+    // you get when nobody sent you anywhere.
+    const link = parseDeepLink(window.location.search);
+    if (link) void this.openDeepLink(link);
+    else this.showTitle();
+  }
+
+  /**
+   * Opens a hole from a shared link.
+   *
+   * Deliberately bypasses the star gates. Someone who followed a link to hole 41
+   * was sent there on purpose, and refusing them because of their own save file
+   * would make every shared link a dead end for most of the people who click it.
+   */
+  private async openDeepLink(link: DeepLink): Promise<void> {
+    if (link.kind === 'campaign') {
+      const level = ALL_LEVELS.find((l) => l.id === link.levelId);
+      if (level) {
+        this.playLevel(level);
+        return;
+      }
+      // A link to a hole this build does not have. Say so rather than hanging.
+      this.showTitle();
+      this.hud.showToast('That hole is not in this version', 2.6, 'bad');
+      return;
+    }
+    await this.playGenerated(
+      link.seed,
+      undefined,
+      'Rebuilding a shared hole',
+      'Generating the same course from its seed and checking it can be finished.',
+    );
+  }
+
+  /**
+   * Points the address bar at the hole being played, so the URL is always worth
+   * copying. `replaceState`, not `pushState`: the back button should leave the
+   * game, not walk back through every hole played this session.
+   */
+  private syncUrl(level: LevelDef & { seed?: number }): void {
+    const link = linkForLevel(level);
+    if (!link) return;
+    try {
+      window.history.replaceState(null, '', shareUrl(link, window.location));
+    } catch {
+      // Blocked in a sandboxed frame or a file:// page. Nothing depends on it.
+    }
+  }
+
+  /**
+   * Drops the hole from the address bar on the way back to a menu, so a refresh
+   * from the menu does not throw the player into the hole they just left.
+   */
+  private clearUrl(): void {
+    if (!window.location.search) return;
+    try {
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch {
+      // Same sandboxing caveat as syncUrl; nothing depends on it.
+    }
+  }
+
+  /** Copies a link to the hole being played, falling back to a visible URL. */
+  private async shareCurrentHole(): Promise<void> {
+    const level = this.session?.level as (LevelDef & { seed?: number }) | undefined;
+    const link = level ? linkForLevel(level) : null;
+    if (!link) return;
+
+    const url = shareUrl(link, window.location);
+    try {
+      await navigator.clipboard.writeText(url);
+      this.hud.showToast('Link copied', 1.8, 'good');
+    } catch {
+      // No clipboard permission, or an insecure context. Showing the link is
+      // still better than silently doing nothing.
+      this.hud.showToast(url, 6);
+    }
   }
 
   /* ---------------------------------------------------------- lifecycle */
@@ -477,6 +559,7 @@ export class GameApp {
 
   playLevel(level: LevelDef): void {
     this.session = new PlaySession(level);
+    this.syncUrl(level);
     this.progress.countAttempt(level.id);
     this.screen = 'play';
     this.overlay.hide();
@@ -636,6 +719,7 @@ export class GameApp {
           onNext: () => upcoming && this.playLevel(upcoming),
           onRetry: () => this.playLevel(session.level),
           onLevels: () => this.showLevels(),
+          onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
         }),
         {},
       );
@@ -661,6 +745,7 @@ export class GameApp {
         onLevels: () => this.showLevels(),
         onSettings: () => this.showSettings('paused'),
         onTitle: () => this.showTitle(),
+        onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
       }),
       { onEscape: () => this.resume() },
     );
@@ -677,6 +762,7 @@ export class GameApp {
   showTitle(): void {
     this.screen = 'title';
     this.session = null;
+    this.clearUrl();
     this.hud.setVisible(false);
     this.renderer.camera.limits = null;
     this.overlay.show(
@@ -772,6 +858,7 @@ export class GameApp {
   showLevels(): void {
     this.screen = 'levels';
     this.session = null;
+    this.clearUrl();
     this.hud.setVisible(false);
     this.overlay.show(
       levelSelectScreen(CHAPTERS, ALL_LEVELS, this.progress, {
@@ -845,6 +932,7 @@ export class GameApp {
         onLevels: () => this.showLevels(),
         onSettings: () => this.showSettings('paused'),
         onTitle: () => this.showTitle(),
+        onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
       }),
       { onEscape: () => this.resume() },
     );

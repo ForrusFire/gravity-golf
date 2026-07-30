@@ -240,6 +240,8 @@ export interface ResultsCallbacks {
   onNext(): void;
   onRetry(): void;
   onLevels(): void;
+  /** Absent when the hole cannot be rebuilt from a link. */
+  onShare?: () => void;
   hasNext: boolean;
   isNewBest: boolean;
   previousBest: number | null;
@@ -295,6 +297,9 @@ export const resultsScreen = (
         ? button('Next hole', callbacks.onNext, { class: 'btn--primary' })
         : button('Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
       button('Retry', callbacks.onRetry),
+      callbacks.onShare
+        ? button('Share this hole', callbacks.onShare, { class: 'btn--ghost' })
+        : null,
       callbacks.hasNext ? button('All holes', callbacks.onLevels, { class: 'btn--ghost' }) : null,
     ]),
   ]);
@@ -313,6 +318,8 @@ export interface PauseCallbacks {
   onLevels(): void;
   onSettings(): void;
   onTitle(): void;
+  /** Absent when the hole cannot be rebuilt from a link. */
+  onShare?: () => void;
 }
 
 export const pauseScreen = (level: LevelDef, callbacks: PauseCallbacks): HTMLElement =>
@@ -324,6 +331,7 @@ export const pauseScreen = (level: LevelDef, callbacks: PauseCallbacks): HTMLEle
       button('Restart hole', callbacks.onRetry),
       button('Select hole', callbacks.onLevels),
       button('Settings', callbacks.onSettings),
+      callbacks.onShare ? button('Share this hole', callbacks.onShare) : null,
       button('Main menu', callbacks.onTitle, { class: 'btn--ghost' }),
     ]),
   ]);

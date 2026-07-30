@@ -84,6 +84,30 @@ Gravity fields are colour- and shape-coded, never colour alone: a **pink** zone
 with chevrons rising through it reverses gravity, **amber** amplifies it, and
 **green** damps it.
 
+## Sharing a hole
+
+Every hole has a link. The address bar tracks whatever you are playing, and
+**Share this hole** on the pause and results screens copies it:
+
+```
+https://…/?hole=c7-4     a campaign hole
+https://…/?seed=1837291  a generated hole, rebuilt from its seed
+```
+
+Seed links work because generation is deterministic *and* verified — the same
+seed yields the same hole on every device, and it was proven completable before
+it was ever shown, so a link cannot hand someone an impossible course. That
+covers the daily too: it shares as its seed rather than as a date, which would
+be a different hole tomorrow.
+
+A link opens its hole immediately and ignores the star gates. Someone who
+followed a link to hole 41 was sent there on purpose, and refusing them because
+of their own save file would make every shared link a dead end for most of the
+people who click it. Links are untrusted input and are parsed as such; anything
+unrecognised falls through to the title screen. They work offline, which needs
+the service worker's navigation fallback to ignore the query string — there is a
+test for that, because the failure mode is every shared link being a dead page.
+
 ## Daily challenge and random holes
 
 Beyond the campaign there is a generated hole a day — the same one for

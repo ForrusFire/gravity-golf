@@ -466,6 +466,59 @@ test.describe('resilience', () => {
   });
 });
 
+test.describe('shared links', () => {
+  test('a hole link opens that hole straight away', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await page.goto('/?hole=c3-2');
+
+    // Straight into play: no title screen, no level select.
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c3-2',
+    );
+    await expect(page.locator('.hud')).not.toHaveClass(/hud--hidden/);
+    expect(errors).toEqual([]);
+  });
+
+  test('a link ignores the star gates that would normally lock the hole', async ({ page }) => {
+    // A fresh save has no stars, so this hole is locked in the level select.
+    // Someone who followed a link was sent there on purpose.
+    await page.goto('/?hole=c9-1');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c9-1',
+    );
+  });
+
+  test('a nonsense link falls back to the title screen', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await page.goto('/?hole=..%2F..%2Fetc%2Fpasswd');
+    await expect(page.getByRole('heading', { name: /GRAVITY/ })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('the address bar tracks the hole and clears on the way out', async ({ page }) => {
+    await startGame(page);
+    await expect.poll(async () => new URL(page.url()).search, { timeout: 10000 }).toBe('?hole=c1-1');
+
+    // Back to a menu, the link goes: a refresh from here should not drop the
+    // player back into the hole they just left.
+    await page.evaluate(() => window.gravityGolf.showLevels());
+    await expect.poll(async () => new URL(page.url()).search).toBe('');
+  });
+
+  test('offers a share button that copies the link', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/?hole=c1-1');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c1-1',
+    );
+
+    await page.locator('canvas').press('Escape');
+    await page.getByRole('button', { name: 'Share this hole' }).click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toContain('?hole=c1-1');
+  });
+});
+
 test.describe('hints', () => {
   test('suggests a line, arms the aim, and marks the run as hinted', async ({ page }) => {
     const errors = consoleErrors(page);

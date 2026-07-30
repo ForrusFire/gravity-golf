@@ -89,4 +89,21 @@ test.describe('offline support', () => {
 
     await context.setOffline(false);
   });
+
+  test('opens a shared link with the network cut off', async ({ page, context }) => {
+    // The precache stores the shell under './', with no query string. A shared
+    // link carries one, so the navigation fallback has to ignore it — otherwise
+    // every shared link is a dead page offline.
+    await page.goto('/');
+    await waitForPrecache(page);
+
+    await context.setOffline(true);
+    await page.goto('/?hole=c2-3');
+
+    await expect(page.locator('body')).not.toHaveClass(/loading/);
+    await expect(page.locator('.hud')).not.toHaveClass(/hud--hidden/);
+    await expect(page.locator('.hud__level')).toHaveText('Dust Bowl');
+
+    await context.setOffline(false);
+  });
 });
