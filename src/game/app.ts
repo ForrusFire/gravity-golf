@@ -386,6 +386,12 @@ export class GameApp {
           particles.burst(event.to, palette.accentAlt, 1.4);
           break;
 
+        case 'boost':
+          this.audio.play('bumper', 1);
+          particles.burst(event.position, '#a6f259', 2.2);
+          if (shakeAllowed) camera.shake(2.5, 0.16);
+          break;
+
         case 'switch':
           this.audio.play(event.on ? 'unlock' : 'back');
           particles.burst(event.position, event.on ? palette.holeRim : palette.textDim, 1.6);
@@ -1005,6 +1011,7 @@ const EMPTY_SCENE_WORLD = {
   portals: [],
   collectibles: [],
   switches: [],
+  boosters: [],
   breakables: {},
   hole: { position: { x: 0, y: -100000 }, radius: 1, captureSpeed: 1 },
   bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },

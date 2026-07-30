@@ -58,6 +58,9 @@ export interface Scene {
 const overlaps = (a: Aabb, b: Aabb): boolean =>
   a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 
+/** Boost rings. A hue nothing else in the game uses. */
+const BOOST_COLOR = '#a6f259';
+
 /** Only solid ground gets cratered — a star or a goo blob should not. */
 const ROCKY_STYLES = new Set<string>(['planet', 'moon', 'asteroid', 'sand']);
 
@@ -138,6 +141,10 @@ export class Renderer {
         continue;
       }
       this.drawBody(ctx, body, shape, options.palette, scene.world);
+    }
+
+    for (const boost of scene.world.boosters) {
+      this.drawBooster(ctx, boost, scene.time);
     }
 
     for (const pad of scene.world.switches) {
@@ -606,6 +613,57 @@ export class Renderer {
   }
 
   /** A switch pad, lit once thrown. */
+  /**
+   * A boost ring. Lime and arrow-shaped: it is the only thing in the game that
+   * *gives* the ball speed on a heading of its own choosing, so it gets a hue
+   * nothing else uses and a chevron stack nobody could read as decoration.
+   */
+  private drawBooster(
+    ctx: CanvasRenderingContext2D,
+    boost: { position: Vec2; radius: number; direction: Vec2; speed: number },
+    time: number,
+  ): void {
+    const { x, y } = boost.position;
+    const angle = Math.atan2(boost.direction.y, boost.direction.x);
+    ctx.save();
+
+    const grad = ctx.createRadialGradient(x, y, boost.radius * 0.2, x, y, boost.radius * 1.9);
+    grad.addColorStop(0, 'rgba(166,242,89,0.24)');
+    grad.addColorStop(1, 'rgba(166,242,89,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, boost.radius * 1.9, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = BOOST_COLOR;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.9;
+    // The mouth faces back the way the ball leaves: an open arc you fly out of.
+    ctx.beginPath();
+    ctx.arc(x, y, boost.radius, angle + 0.62, angle - 0.62);
+    ctx.stroke();
+
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Chevrons marching outward, so the heading reads at a glance and the ring
+    // looks alive rather than like another piece of scenery.
+    const march = (time * 2.2) % 1;
+    for (let i = 0; i < 3; i++) {
+      const t = (i + march) / 3;
+      const r = boost.radius * (0.15 + t * 1.0);
+      ctx.globalAlpha = 0.9 * (1 - Math.abs(t - 0.5) * 1.2);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(r - 9, -9);
+      ctx.lineTo(r, 0);
+      ctx.lineTo(r - 9, 9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawSwitch(
     ctx: CanvasRenderingContext2D,
     pad: { position: Vec2; radius: number; on: boolean; holdTime?: number; offAt?: number },

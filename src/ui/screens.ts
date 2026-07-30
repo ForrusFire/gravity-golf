@@ -687,6 +687,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),
       helpItem('🔒', 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
       helpSwatch('#8fdcf5', 'Membranes', 'Chevrons show the one direction you may cross. There is no coming back through one.'),
+      helpSwatch('#a6f259', 'Boost rings', 'A lime ring fires the ball out along its arrows at its own fixed speed, whatever speed you arrived at. Get into it however you like — the exit is always the same.'),
     ]),
 
     el('h3', { text: 'Reading the field' }),

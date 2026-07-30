@@ -42,6 +42,7 @@ export type SessionEvent =
   | { type: 'star-lost'; id: string }
   | { type: 'portal'; from: Vec2; to: Vec2 }
   | { type: 'switch'; id: string; position: Vec2; on: boolean }
+  | { type: 'boost'; id: string; position: Vec2; speed: number }
   | { type: 'shatter'; bodyId: string; position: Vec2 }
   | { type: 'locked'; position: Vec2; needed: number }
   | { type: 'lipout'; position: Vec2 }
@@ -546,6 +547,10 @@ export class PlaySession {
 
         case 'switch':
           out.push({ type: 'switch', id: event.id, position: event.position, on: event.on });
+          break;
+
+        case 'boost':
+          out.push({ type: 'boost', id: event.id, position: event.position, speed: event.speed });
           break;
 
         case 'shatter':

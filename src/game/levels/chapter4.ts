@@ -179,6 +179,11 @@ export const CHAPTER_4: LevelDef[] = [
       bumper('b3', vec(360, 140), 44),
       bumper('b4', vec(-60, 260), 34),
       rock('post', vec(240, 330), 28),
+      // A slot, not a saucer. The cup sits at the low point of the whole hole,
+      // so without these lips any ball that settles on the ground simply rolls
+      // in and a quarter of all blind shots score.
+      wall('lip-l', vec(-74, 400), vec(-74, 306), 10),
+      wall('lip-r', vec(74, 400), vec(74, 306), 10),
       sun('flare', vec(-400, -240), 40, 460, { range: 260 }),
       {
         id: 'flipper',

@@ -17,6 +17,7 @@ import {
   type Body,
   type MaterialId,
   type PhysicsConfig,
+  type Booster,
   type Portal,
   type Shape,
   type Zone,
@@ -61,6 +62,7 @@ export interface World {
   zones: Zone[];
   portals: Portal[];
   switches: SwitchState[];
+  boosters: Booster[];
   /**
    * Impacts left before each breakable body shatters, keyed by body id. Held
    * here rather than on the body so a preview or a search can copy the mutable
@@ -156,6 +158,7 @@ export type SimEvent =
   | { type: 'death'; position: Vec2; cause: DeathCause }
   | { type: 'portal'; from: Vec2; to: Vec2; portalId: string }
   | { type: 'switch'; id: string; position: Vec2; on: boolean }
+  | { type: 'boost'; id: string; position: Vec2; direction: Vec2; speed: number }
   | { type: 'shatter'; bodyId: string; position: Vec2 }
   | { type: 'locked'; position: Vec2; needed: number }
   | { type: 'rest'; position: Vec2 };
@@ -185,6 +188,8 @@ export interface BallRuntime {
   insideSwitches: Set<string>;
   /** True while sitting in a cup that refused the ball, so it complains once. */
   inLockedCup: boolean;
+  /** Booster ids the ball is currently inside, so each pass fires once. */
+  insideBoosters: Set<string>;
 }
 
 export const createBallRuntime = (): BallRuntime => ({
@@ -197,6 +202,7 @@ export const createBallRuntime = (): BallRuntime => ({
   distance: 0,
   insideSwitches: new Set(),
   inLockedCup: false,
+  insideBoosters: new Set(),
 });
 
 export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'>): World => ({
@@ -205,6 +211,7 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
   portals: [],
   collectibles: [],
   switches: [],
+  boosters: [],
   breakables: {},
   boundsMode: 'kill',
   uniformGravity: V.ZERO,
@@ -503,6 +510,42 @@ const checkPortals = (world: World, ball: Ball, rt: BallRuntime, events: SimEven
 };
 
 /**
+ * Fires any booster the ball has entered, overwriting its velocity.
+ *
+ * Edge-triggered like a switch pad: a ball that stalls inside a ring would
+ * otherwise be re-fired every step and never leave.
+ */
+const checkBoosters = (
+  world: World,
+  ball: Ball,
+  runtime: BallRuntime,
+  events: SimEvent[],
+): void => {
+  for (const booster of world.boosters) {
+    const reach = booster.radius + ball.radius;
+    const inside = V.distanceSq(ball.position, booster.position) <= reach * reach;
+    if (!inside) {
+      runtime.insideBoosters.delete(booster.id);
+      continue;
+    }
+    if (runtime.insideBoosters.has(booster.id)) continue;
+
+    runtime.insideBoosters.add(booster.id);
+    const dir = V.normalize(booster.direction);
+    ball.velocity = V.mul(dir, booster.speed);
+    ball.atRest = false;
+    ball.restTimer = 0;
+    events.push({
+      type: 'boost',
+      id: booster.id,
+      position: booster.position,
+      direction: dir,
+      speed: booster.speed,
+    });
+  }
+};
+
+/**
  * Fires any switch the ball is inside. A latching switch stays on; a toggle
  * flips, but only once per pass, so sitting inside one does not strobe the
  * course between states.
@@ -726,6 +769,7 @@ export const stepWorld = (
 
     if (runtime.portalCooldown > 0) runtime.portalCooldown = Math.max(0, runtime.portalCooldown - h);
     checkPortals(world, ball, runtime, events);
+    checkBoosters(world, ball, runtime, events);
     checkSwitches(world, ball, runtime, events);
     checkCollectibles(world, ball, events);
 

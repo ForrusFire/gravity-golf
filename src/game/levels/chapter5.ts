@@ -141,7 +141,9 @@ export const CHAPTER_5: LevelDef[] = [
       wall('m3', vec(-460, 200), vec(-200, 200), 14, { material: 'ice', style: 'ice' }),
       wall('m4', vec(460, 200), vec(200, 200), 14, { material: 'ice', style: 'ice' }),
       wall('sink-l', vec(-680, 420), vec(-300, 420), 14, { material: 'sand', style: 'sand' }),
-      wall('sink-r', vec(300, 420), vec(680, 420), 14, { material: 'sand', style: 'sand' }),
+      wall('sink-r', vec(520, 420), vec(680, 420), 14, { material: 'sand', style: 'sand' }),
+      // Drop in over the lip; trickling along the floor no longer counts.
+      wall('lip-r', vec(520, 406), vec(520, 320), 10, { material: 'ice', style: 'ice' }),
     ],
     stars: [vec(0, -300), vec(-300, 20), vec(300, 20)],
   },

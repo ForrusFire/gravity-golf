@@ -7,7 +7,14 @@ import {
   shapeCenter,
   type Aabb,
 } from '../physics/geometry';
-import { DEFAULT_PHYSICS, type Body, type Portal, type SwitchSpec, type Zone } from '../physics/types';
+import {
+  DEFAULT_PHYSICS,
+  type Body,
+  type Booster,
+  type Portal,
+  type SwitchSpec,
+  type Zone,
+} from '../physics/types';
 import { createWorld, type BoundsMode, type World } from '../physics/world';
 
 /** Authored, serialisable description of a hole. Compiled into a `World`. */
@@ -32,6 +39,7 @@ export interface LevelDef {
   zones?: Zone[];
   portals?: Portal[];
   switches?: SwitchSpec[];
+  boosters?: Booster[];
   /** Optional bonus pickups, at most three per hole. */
   stars?: Vec2[];
   /** One-line tip shown the first time the hole is played. */
@@ -68,6 +76,7 @@ export const compileLevel = (level: LevelDef): World =>
     zones: (level.zones ?? []).map((z) => ({ ...z })),
     portals: (level.portals ?? []).map((p) => ({ ...p })),
     switches: (level.switches ?? []).map((sw) => ({ ...sw, on: false })),
+    boosters: (level.boosters ?? []).map((b) => ({ ...b })),
     breakables: Object.fromEntries(
       (level.bodies ?? [])
         .filter((b) => b.hitsToBreak !== undefined)
@@ -189,6 +198,17 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
     ids.add(pad.id);
     if (!inBounds(b, pad.position)) err(`switch "${pad.id}" is outside the level bounds`);
     if (pad.radius < BALL_RADIUS) warn(`switch "${pad.id}" is narrower than the ball`);
+  }
+
+  for (const boost of level.boosters ?? []) {
+    if (ids.has(boost.id)) err(`duplicate booster id "${boost.id}"`);
+    ids.add(boost.id);
+    if (!inBounds(b, boost.position)) err(`booster "${boost.id}" is outside the level bounds`);
+    if (boost.radius < BALL_RADIUS) warn(`booster "${boost.id}" is narrower than the ball`);
+    if (boost.speed <= 0) err(`booster "${boost.id}" has no exit speed`);
+    // A zero direction would leave the ball motionless inside the ring, which
+    // reads as the game hanging rather than as a shot going wrong.
+    if (V.length(boost.direction) < 1e-6) err(`booster "${boost.id}" has no exit direction`);
   }
 
   // A gate keyed to a switch that does not exist can never open, which would
@@ -397,6 +417,18 @@ export const bridge = (
   style: 'wall',
   addedBy: switchId,
 });
+
+/**
+ * A ring that fires the ball out along `direction` at `speed`, whatever it came
+ * in doing. `direction` may be any vector; it is normalised here.
+ */
+export const booster = (
+  id: string,
+  position: Vec2,
+  direction: Vec2,
+  speed: number,
+  radius = 30,
+): Booster => ({ id, position, radius, direction: V.normalize(direction), speed });
 
 /**
  * A membrane the ball can only cross in the direction of `through`. Useful for

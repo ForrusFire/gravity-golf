@@ -15,6 +15,7 @@ import {
 } from '../../src/physics/world';
 import {
   BALL_RADIUS,
+  booster,
   bridge,
   compileLevel,
   crystal,
@@ -420,5 +421,101 @@ describe('one-way membranes', () => {
     const runtime = createBallRuntime();
     run(world, ball, runtime, 5);
     expect(ball.position.x).toBeGreaterThan(0);
+  });
+});
+
+describe('boost rings', () => {
+  const ringWorld = (direction: V.Vec2, speed: number): World =>
+    makeWorld({ boosters: [booster('ring', V.vec(0, 0), direction, speed, 30)] });
+
+  it('overwrites velocity with its own heading and speed', () => {
+    // Absolute, not additive: the whole point is that the exit is a promise the
+    // player can plan around regardless of how they arrived.
+    const world = ringWorld(V.vec(0, -1), 500);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    const events = run(world, ball, runtime, 0.9);
+
+    const fired = events.filter((e) => e.type === 'boost');
+    expect(fired).toHaveLength(1);
+    expect(fired[0]).toMatchObject({ id: 'ring', speed: 500 });
+    expect(ball.position.y).toBeLessThan(-100);
+  });
+
+  it('gives the same exit however fast the ball arrives', () => {
+    const exits: V.Vec2[] = [];
+    for (const entrySpeed of [120, 400, 900]) {
+      const world = ringWorld(V.vec(1, -1), 600);
+      const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), entrySpeed);
+      // Step until the ring fires, then read the velocity it handed over.
+      const steps = Math.round(3 / world.config.timeStep);
+      for (let i = 0; i < steps; i++) {
+        const events: SimEvent[] = [];
+        stepWorld(world, ball, runtime, events);
+        if (events.some((e) => e.type === 'boost')) break;
+      }
+      exits.push(ball.velocity);
+    }
+    for (const exit of exits) {
+      expect(V.length(exit)).toBeCloseTo(600, 3);
+      expect(V.angleOf(exit)).toBeCloseTo(V.angleOf(V.vec(1, -1)), 6);
+    }
+  });
+
+  it('fires once per pass, not once per step inside the ring', () => {
+    // The ring points across the ball's path, so it lingers inside. Re-firing
+    // every step would trap it there forever.
+    const world = ringWorld(V.vec(0, -1), 30);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 200);
+    const events = run(world, ball, runtime, 2);
+    expect(events.filter((e) => e.type === 'boost')).toHaveLength(1);
+  });
+
+  it('re-arms once the ball has left', () => {
+    const world = ringWorld(V.vec(0, -1), 400);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 1.2);
+    expect(V.distance(ball.position, V.vec(0, 0))).toBeGreaterThan(200);
+
+    launchBall(ball, runtime, V.normalize(V.sub(V.vec(0, 0), ball.position)));
+    ball.position = V.vec(0, -200);
+    ball.velocity = V.vec(0, 400);
+    const again = run(world, ball, runtime, 1.5);
+    expect(again.filter((e) => e.type === 'boost')).toHaveLength(1);
+  });
+
+  it('wakes a ball that had come to rest inside it', () => {
+    const world = ringWorld(V.vec(1, 0), 350);
+    const ball = createBall(V.vec(0, 0), BALL_RADIUS);
+    const runtime = createBallRuntime();
+    expect(ball.atRest).toBe(true);
+    run(world, ball, runtime, 0.5);
+    expect(ball.atRest).toBe(false);
+    expect(ball.position.x).toBeGreaterThan(100);
+  });
+
+  it('rejects a ring with no exit direction or no speed', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-200, 0),
+      hole: { position: V.vec(200, 0) },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    };
+    const still = validateLevel({
+      ...base,
+      boosters: [{ id: 'r', position: V.vec(0, 0), radius: 30, direction: V.ZERO, speed: 400 }],
+    });
+    expect(still.some((i) => i.severity === 'error' && i.message.includes('exit direction'))).toBe(
+      true,
+    );
+
+    const dead = validateLevel({
+      ...base,
+      boosters: [{ id: 'r', position: V.vec(0, 0), radius: 30, direction: V.vec(1, 0), speed: 0 }],
+    });
+    expect(dead.some((i) => i.severity === 'error' && i.message.includes('exit speed'))).toBe(true);
   });
 });

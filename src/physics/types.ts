@@ -202,6 +202,23 @@ export interface Portal {
   bidirectional: boolean;
 }
 
+/**
+ * A ring that fires the ball out along a fixed direction at a fixed speed.
+ *
+ * Deliberately absolute rather than additive: entry speed and angle are
+ * irrelevant, so a booster is a promise the player can plan around — "get into
+ * that ring however you like and you leave *there*, at *that* speed".
+ */
+export interface Booster {
+  id: string;
+  position: Vec2;
+  radius: number;
+  /** Unit vector the ball leaves along. */
+  direction: Vec2;
+  /** Exit speed in units per second. */
+  speed: number;
+}
+
 /* -------------------------------------------------------------------- ball */
 
 export interface Ball {

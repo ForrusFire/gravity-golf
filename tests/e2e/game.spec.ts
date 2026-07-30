@@ -372,7 +372,7 @@ test.describe('menus', () => {
       page.getByRole('heading', { name: 'Reading the field', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Sealed cups', exact: true })).toBeVisible();
-    await expect(page.locator('.help__swatch')).toHaveCount(6);
+    await expect(page.locator('.help__swatch')).toHaveCount(7);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByRole('heading', { name: /GRAVITY/ })).toBeVisible();
   });

@@ -32,6 +32,9 @@ npm run dev      # play it at http://localhost:5173
   Some vaults need every pad thrown at once.
 - **One-way membranes** are marked with chevrons showing the direction you may
   cross. There is no going back through one.
+- **Boost rings** fire the ball out along their arrows at their own fixed speed,
+  whatever speed it arrived at — so they are the one thing on a hole you aim
+  *at* rather than *with*.
 - **Some cups are sealed.** A cup barred and drawn in amber will not accept the
   ball until you have banked every star, with a pip above it for each one still
   owed.
@@ -53,7 +56,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-48 holes across eight chapters, each introducing one idea at a time:
+54 holes across nine chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -65,6 +68,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 6. Machine Shop | Switches, gates, drawbridges, breakable crystal, sealed cups |
 | 7. Inversion | Reversed, amplified and cancelled gravity |
 | 8. Clockwork | Timed gates, one-way membranes, multi-lock vaults |
+| 9. Launch Control | Boost rings — the route becomes a relay |
 
 Chapters 1–5 are pure ballistics: you read the field and pick a line. From
 chapter 6 the hole itself has state, and a shot can change it — which is why
@@ -167,6 +171,12 @@ Two of the suites are worth calling out:
   is the only search allowed a wall-clock budget, because a time-bounded search
   gives different answers on different machines and "this hole is completable"
   must not depend on how fast the box was.
+- **No hole can be won by accident.** A blind sweep of opening shots must sink
+  each hole (outside the tutorial chapter) less than 7% of the time. This catches
+  what completability cannot: three holes had shipped with the cup sitting at the
+  natural resting point of the course, so anything that settled simply rolled in
+  — one scored on a quarter of all blind shots. The solver was perfectly happy,
+  because "can this be finished" was never the question.
 - **Level validation** rejects buried tees, holes sunk inside a body, stars
   outside the play area and duplicate ids — the authoring mistakes that are
   invisible until someone plays the hole.

@@ -159,6 +159,7 @@ const simulateShot = (
       offAt: state.switchTimers[sw.id],
     })),
     breakables: { ...state.breakables },
+    // Boosters hold no state, so the live array is safe to share.
     revision: 0,
     config: { ...world.config, timeStep: opts.timeStep },
     time: startTime,
