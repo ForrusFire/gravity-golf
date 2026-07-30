@@ -466,6 +466,117 @@ test.describe('resilience', () => {
   });
 });
 
+test.describe('playing a round', () => {
+  /**
+   * Finishes whatever hole is on screen.
+   *
+   * Teleporting the ball onto the cup is not enough on its own: a sealed cup
+   * wants its stars first, and a directional one wants the ball actually moving
+   * on the heading it asks for. Both are satisfied explicitly here so the helper
+   * works on any hole a round can draw.
+   */
+  const sinkHole = (page: Page) =>
+    page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          ball: { position: { x: number; y: number }; velocity: { x: number; y: number }; atRest: boolean };
+          world: {
+            collectibles: Array<{ collected: boolean }>;
+            hole: {
+              position: { x: number; y: number };
+              radius: number;
+              approach?: { direction: { x: number; y: number } };
+            };
+          };
+        } | null;
+      };
+      const s = app.session!;
+      for (const item of s.world.collectibles) item.collected = true;
+
+      const dir = s.world.hole.approach?.direction ?? { x: 0, y: 1 };
+      const length = Math.hypot(dir.x, dir.y) || 1;
+      const unit = { x: dir.x / length, y: dir.y / length };
+      // Just short of the cup, travelling into it well under capture speed.
+      s.ball.position = {
+        x: s.world.hole.position.x - unit.x * s.world.hole.radius * 0.4,
+        y: s.world.hole.position.y - unit.y * s.world.hole.radius * 0.4,
+      };
+      s.ball.velocity = { x: unit.x * 30, y: unit.y * 30 };
+      s.ball.atRest = false;
+    });
+
+  test('a round link opens the same nine holes for everybody', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await page.goto('/?round=4242');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBeTruthy();
+    const first = (await sessionState(page))!.levelId;
+
+    // Same seed, same round — that is the whole point of sharing one.
+    await page.goto('/?round=4242');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      first,
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test('runs hole to hole without a panel between each one', async ({ page }) => {
+    await page.goto('/?round=777');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBeTruthy();
+    const first = (await sessionState(page))!.levelId;
+
+    await sinkHole(page);
+    // Straight on to the next hole: no results screen in between.
+    await expect
+      .poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 })
+      .not.toBe(first);
+    await expect(page.locator('.results')).toHaveCount(0);
+    // The address bar still names the round, not whichever hole it is on.
+    expect(new URL(page.url()).search).toBe('?round=777');
+  });
+
+  test('ends with a card of the whole round', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/?round=31337');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBeTruthy();
+
+    for (let hole = 0; hole < 9; hole++) {
+      await expect.poll(async () => (await sessionState(page))?.canShoot, { timeout: 20000 }).toBe(
+        true,
+      );
+      await sinkHole(page);
+      if (hole < 8) {
+        await expect
+          .poll(async () => (await sessionState(page))?.strokes, { timeout: 20000 })
+          .toBe(0);
+      }
+    }
+
+    await expect(page.getByRole('heading', { name: 'Round complete' })).toBeVisible({
+      timeout: 20000,
+    });
+    await expect(page.locator('.card__table tbody tr')).toHaveCount(9);
+    await expect(page.getByText('Best round yet!')).toBeVisible();
+  });
+
+  test('leaving for a menu abandons the round', async ({ page }) => {
+    await page.goto('/?round=555');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBeTruthy();
+
+    await page.evaluate(() => window.gravityGolf.showTitle());
+    await expect(page.getByRole('heading', { name: /GRAVITY/ })).toBeVisible();
+    expect(new URL(page.url()).search).toBe('');
+
+    // Finishing some unrelated hole must not count towards the abandoned round.
+    await page.evaluate(() => window.gravityGolf.debugPlay('c1-1'));
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c1-1',
+    );
+    await sinkHole(page);
+    await expect(page.locator('.results')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Round complete' })).toHaveCount(0);
+  });
+});
+
 test.describe('finishing the campaign', () => {
   /** Marks every campaign hole complete except `except`. */
   const seedProgress = async (page: Page, except: string): Promise<void> => {

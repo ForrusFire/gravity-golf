@@ -2,6 +2,7 @@ import type { Chapter } from '../game/levels';
 import type { LevelDef } from '../game/level';
 import type { ProgressStore, Settings } from '../game/progress';
 import { FEATS, type FeatId, type HoleResult, type Medal } from '../game/session';
+import { roundPar, roundStars, roundStrokes, type RoundState } from '../game/round';
 import { BALL_SKINS, isSkinUnlocked } from '../game/skins';
 import { button, clear, el, formatTime, formatToPar, starRow } from './dom';
 
@@ -103,6 +104,7 @@ export interface TitleCallbacks {
   onScorecard(): void;
   onDaily(): void;
   onRandom(): void;
+  onRound(): void;
 }
 
 export const titleScreen = (
@@ -128,6 +130,7 @@ export const titleScreen = (
       button('Select hole', callbacks.onLevels),
       button(dailyDone ? "Daily challenge ✓" : 'Daily challenge', callbacks.onDaily),
       button('Random hole', callbacks.onRandom),
+      button('Play a round', callbacks.onRound),
       button('Scorecard', callbacks.onScorecard),
       button('How to play', callbacks.onHelp),
       button('Settings', callbacks.onSettings),
@@ -652,6 +655,84 @@ export const scorecardScreen = (
         ]);
       }),
     ),
+  ]);
+};
+
+/* ------------------------------------------------------------------ round */
+
+export interface RoundCallbacks {
+  onAgain(): void;
+  onShare?: () => void;
+  onTitle(): void;
+}
+
+/** The card at the end of a round: every hole, its par, and what it cost. */
+export const roundCompleteScreen = (
+  round: RoundState,
+  personalBest: number | null,
+  callbacks: RoundCallbacks,
+): HTMLElement => {
+  const strokes = roundStrokes(round);
+  const par = roundPar(round);
+  const diff = strokes - par;
+  const isBest = personalBest === null || strokes < personalBest;
+
+  return el('div', { class: 'results results--finale' }, [
+    el('div', { class: 'results__medal', text: '⛳' }),
+    el('h2', { class: 'results__title', text: 'Round complete' }),
+    el('p', { class: 'results__level', text: `${round.holes.length} holes · seed ${round.seed}` }),
+    isBest ? el('p', { class: 'results__best', text: '★ Best round yet!' }) : null,
+    el('div', { class: 'results__grid' }, [
+      statBlock('Strokes', String(strokes)),
+      statBlock('Par', String(par)),
+      statBlock('To par', diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`),
+      statBlock('Stars', `${roundStars(round)}/${round.holes.length * 3}`),
+    ]),
+    el('table', { class: 'card__table' }, [
+      el('thead', {}, [
+        el('tr', {}, [
+          el('th', { attrs: { scope: 'col' }, text: 'Hole' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Par' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Score' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Stars' }),
+        ]),
+      ]),
+      el(
+        'tbody',
+        {},
+        round.holes.map((hole, i) =>
+          el('tr', {}, [
+            el('th', { attrs: { scope: 'row' } }, [
+              el('span', { class: 'card__num', text: `${i + 1}` }),
+              hole.level.name,
+            ]),
+            el('td', { text: String(hole.level.par) }),
+            el('td', {
+              class:
+                hole.strokes === null
+                  ? ''
+                  : hole.strokes < hole.level.par
+                    ? 'is-under'
+                    : hole.strokes > hole.level.par
+                      ? 'is-over'
+                      : '',
+              text: hole.strokes === null ? '—' : String(hole.strokes),
+            }),
+            el('td', {}, [starRow(hole.stars)]),
+          ]),
+        ),
+      ),
+    ]),
+    personalBest !== null
+      ? el('p', { class: 'results__previous', text: `Best round: ${personalBest}` })
+      : null,
+    el('div', { class: 'results__buttons' }, [
+      button('Another round', callbacks.onAgain, { class: 'btn--primary' }),
+      callbacks.onShare
+        ? button('Share this round', callbacks.onShare, { class: 'btn--ghost' })
+        : null,
+      button('Main menu', callbacks.onTitle, { class: 'btn--ghost' }),
+    ]),
   ]);
 };
 

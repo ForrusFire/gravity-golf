@@ -7,6 +7,14 @@ describe('parseDeepLink', () => {
     expect(parseDeepLink('?hole=c10-6')).toEqual({ kind: 'campaign', levelId: 'c10-6' });
   });
 
+  it('reads a round seed', () => {
+    expect(parseDeepLink('?round=8080')).toEqual({ kind: 'round', seed: 8080 });
+  });
+
+  it('prefers a round over a bare seed when a link carries both', () => {
+    expect(parseDeepLink('?round=5&seed=6')).toEqual({ kind: 'round', seed: 5 });
+  });
+
   it('reads a generated seed', () => {
     expect(parseDeepLink('?seed=123456')).toEqual({ kind: 'generated', seed: 123456 });
     expect(parseDeepLink('?seed=0')).toEqual({ kind: 'generated', seed: 0 });
@@ -26,6 +34,9 @@ describe('parseDeepLink', () => {
       '?seed=-1',
       '?seed=1e9',
       '?seed=99999999999',
+      '?round=abc',
+      '?round=-3',
+      '?round=99999999999',
     ]) {
       expect(parseDeepLink(search), search).toBeNull();
     }
@@ -47,6 +58,7 @@ describe('links round-trip', () => {
     for (const link of [
       { kind: 'campaign', levelId: 'c7-4' },
       { kind: 'generated', seed: 987654 },
+      { kind: 'round', seed: 313 },
     ] as const) {
       expect(parseDeepLink(formatDeepLink(link))).toEqual(link);
     }

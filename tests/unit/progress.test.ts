@@ -256,3 +256,30 @@ describe('campaign scoping', () => {
     expect(seeded().totalStars(['c9-9'])).toBe(0);
   });
 });
+
+describe('best round', () => {
+  it('starts empty and keeps only the best', () => {
+    const store = new ProgressStore(new MemoryStorage());
+    expect(store.bestRound).toBeNull();
+
+    expect(store.submitRound(40)).toBe(true);
+    expect(store.bestRound).toBe(40);
+
+    expect(store.submitRound(44)).toBe(false);
+    expect(store.bestRound).toBe(40);
+
+    expect(store.submitRound(37)).toBe(true);
+    expect(store.bestRound).toBe(37);
+  });
+
+  it('survives a reload, and a save from before rounds existed reads as none', () => {
+    const storage = new MemoryStorage();
+    new ProgressStore(storage).submitRound(33);
+    expect(new ProgressStore(storage).bestRound).toBe(33);
+
+    // An older save simply has no such field; that is "no round yet", not a
+    // reason to throw away everything else in it.
+    expect(parseProgress(JSON.stringify({ version: 1, levels: {} })).bestRound).toBeNull();
+    expect(parseProgress(JSON.stringify({ version: 1, bestRound: -5 })).bestRound).toBeNull();
+  });
+});

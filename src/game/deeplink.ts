@@ -13,7 +13,8 @@
  */
 export type DeepLink =
   | { kind: 'campaign'; levelId: string }
-  | { kind: 'generated'; seed: number };
+  | { kind: 'generated'; seed: number }
+  | { kind: 'round'; seed: number };
 
 /** Campaign ids are `c<chapter>-<hole>`; anything else is not one of ours. */
 const CAMPAIGN_ID = /^c\d{1,3}-\d{1,3}$/;
@@ -30,23 +31,27 @@ export const parseDeepLink = (search: string): DeepLink | null => {
   const hole = params.get('hole');
   if (hole && CAMPAIGN_ID.test(hole)) return { kind: 'campaign', levelId: hole };
 
-  const seed = params.get('seed');
-  if (seed !== null && /^\d{1,10}$/.test(seed)) {
-    const value = Number(seed);
-    // Beyond 2^32 the generator's RNG wraps, so the link would not reproduce
-    // the hole it claims to.
-    if (Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff) {
-      return { kind: 'generated', seed: value };
-    }
-  }
+  const round = parseSeed(params.get('round'));
+  if (round !== null) return { kind: 'round', seed: round };
+
+  // Beyond 2^32 the RNG wraps, so the link would not reproduce what it claims.
+  const seed = parseSeed(params.get('seed'));
+  if (seed !== null) return { kind: 'generated', seed };
 
   return null;
+};
+
+const parseSeed = (raw: string | null): number | null => {
+  if (raw === null || !/^\d{1,10}$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff ? value : null;
 };
 
 /** The query string for a link, including the leading `?`. Empty when unshareable. */
 export const formatDeepLink = (link: DeepLink | null): string => {
   if (!link) return '';
-  return link.kind === 'campaign' ? `?hole=${link.levelId}` : `?seed=${link.seed}`;
+  if (link.kind === 'campaign') return `?hole=${link.levelId}`;
+  return link.kind === 'round' ? `?round=${link.seed}` : `?seed=${link.seed}`;
 };
 
 /**

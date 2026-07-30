@@ -20,6 +20,7 @@ import {
   scorecardScreen,
   scorecardTotals,
   resultsScreen,
+  roundCompleteScreen,
   settingsScreen,
   titleScreen,
 } from '../ui/screens';
@@ -35,9 +36,16 @@ import {
   type DeepLink,
 } from './deeplink';
 import { GhostRunner } from './ghost';
+import {
+  buildRound,
+  randomRoundSeed,
+  roundFinished,
+  roundStrokes,
+  type RoundState,
+} from './round';
 import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
-import { FEATS, PlaySession, type SessionEvent } from './session';
+import { FEATS, PlaySession, type HoleResult, type SessionEvent } from './session';
 import { resolveSkin } from './skins';
 
 type AppScreen =
@@ -96,6 +104,8 @@ export class GameApp {
   private running = false;
   private hintShownFor = new Set<string>();
   private generating = false;
+  /** The round in progress, or null when playing a single hole. */
+  private round: RoundState | null = null;
   /** The suggested line currently on screen, and the shot it came from. */
   private hintLine: { path: Vec2[]; strokes: number } | null = null;
   private hintPending = false;
@@ -181,6 +191,10 @@ export class GameApp {
       this.hud.showToast('That hole is not in this version', 2.6, 'bad');
       return;
     }
+    if (link.kind === 'round') {
+      this.playRound(link.seed);
+      return;
+    }
     await this.playGenerated(
       link.seed,
       undefined,
@@ -195,10 +209,22 @@ export class GameApp {
    * game, not walk back through every hole played this session.
    */
   private syncUrl(level: LevelDef & { seed?: number }): void {
-    const link = linkForLevel(level);
-    if (!link) return;
+    // Mid-round the shareable thing is the round, not hole four of it.
+    const search = this.round
+      ? `?round=${this.round.seed}`
+      : (() => {
+          const link = linkForLevel(level);
+          return link ? shareUrl(link, window.location) : null;
+        })();
+    if (!search) return;
     try {
-      window.history.replaceState(null, '', shareUrl(link, window.location));
+      window.history.replaceState(
+        null,
+        '',
+        search.startsWith('?')
+          ? `${window.location.origin}${window.location.pathname}${search}`
+          : search,
+      );
     } catch {
       // Blocked in a sandboxed frame or a file:// page. Nothing depends on it.
     }
@@ -716,6 +742,14 @@ export class GameApp {
     // A beat of celebration before the panel covers the screen.
     window.setTimeout(() => {
       if (this.disposed || this.screen !== 'play') return;
+
+      // Mid-round, the next hole follows straight on: a round is one continuous
+      // run, and a results panel between every hole would break it into nine.
+      if (this.round) {
+        this.advanceRound(result);
+        return;
+      }
+
       this.screen = 'results';
       this.hud.setVisible(false);
 
@@ -763,6 +797,76 @@ export class GameApp {
     };
   }
 
+  /**
+   * Starts a nine-hole round drawn from `seed`.
+   *
+   * A round is scored as a whole, so its holes deliberately do not touch the
+   * campaign's per-hole records — a hole you happened to draw badly should not
+   * overwrite the best you ever played it.
+   */
+  playRound(seed: number): void {
+    this.round = buildRound(seed, ALL_LEVELS);
+    if (this.round.holes.length === 0) {
+      this.round = null;
+      this.showTitle();
+      return;
+    }
+    this.playRoundHole();
+  }
+
+  private playRoundHole(): void {
+    const round = this.round;
+    if (!round) return;
+    const hole = round.holes[round.index];
+    if (!hole) return;
+    this.playLevel(hole.level);
+    this.hud.showToast(`Round · hole ${round.index + 1} of ${round.holes.length}`, 2.2);
+  }
+
+  /** Records the hole just finished and moves the round on. */
+  private advanceRound(result: HoleResult): void {
+    const round = this.round;
+    if (!round) return;
+    const hole = round.holes[round.index];
+    if (hole) {
+      hole.strokes = result.strokes;
+      hole.stars = result.stars;
+    }
+    round.index++;
+
+    if (!roundFinished(round)) {
+      this.playRoundHole();
+      return;
+    }
+
+    const strokes = roundStrokes(round);
+    const previousBest = this.progress.bestRound;
+    this.progress.submitRound(strokes);
+    this.audio.play('unlock');
+    this.screen = 'results';
+    this.hud.setVisible(false);
+    this.round = null;
+    this.overlay.show(
+      roundCompleteScreen(round, previousBest, {
+        onAgain: () => this.playRound(randomRoundSeed()),
+        onShare: () => void this.shareRound(round.seed),
+        onTitle: () => this.showTitle(),
+      }),
+      { onEscape: () => this.showTitle(), wide: true },
+    );
+  }
+
+  /** Copies a link that rebuilds this exact round. */
+  private async shareRound(seed: number): Promise<void> {
+    const url = `${window.location.origin}${window.location.pathname}?round=${seed}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.hud.showToast('Link copied', 1.8, 'good');
+    } catch {
+      this.hud.showToast(url, 6);
+    }
+  }
+
   private retry(): void {
     const session = this.session;
     if (!session) return;
@@ -800,6 +904,9 @@ export class GameApp {
     this.screen = 'title';
     this.session = null;
     this.clearUrl();
+    // Walking away from a round ends it; otherwise finishing some unrelated
+    // hole later would quietly count towards it.
+    this.round = null;
     this.hud.setVisible(false);
     this.renderer.camera.limits = null;
     this.overlay.show(
@@ -812,6 +919,7 @@ export class GameApp {
           onScorecard: () => this.showScorecard('title'),
           onDaily: () => void this.playDaily(),
           onRandom: () => void this.playRandom(),
+          onRound: () => this.playRound(randomRoundSeed()),
         },
         this.progress,
         CAMPAIGN_IDS,
@@ -896,6 +1004,9 @@ export class GameApp {
     this.screen = 'levels';
     this.session = null;
     this.clearUrl();
+    // Walking away from a round ends it; otherwise finishing some unrelated
+    // hole later would quietly count towards it.
+    this.round = null;
     this.hud.setVisible(false);
     this.overlay.show(
       levelSelectScreen(CHAPTERS, ALL_LEVELS, this.progress, {

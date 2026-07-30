@@ -94,14 +94,31 @@ Gravity fields are colour- and shape-coded, never colour alone: a **pink** zone
 with chevrons rising through it reverses gravity, **amber** amplifies it, and
 **green** damps it.
 
+## Rounds
+
+**Play a round** deals nine campaign holes and runs them back to back as one
+continuous score — no panel between holes, one card at the end, and a personal
+best across every round you have played. The holes are drawn deterministically
+from a seed and walk up through the chapters, so a round ramps the way the
+campaign does instead of opening on a finale. Nine holes drawn uniformly would
+mostly be late ones, since most chapters are late chapters.
+
+Campaign holes rather than generated ones, for two reasons: nine generated holes
+would mean fifteen seconds of verification before the first shot, and campaign
+holes are already proven completable, so a shared round is a fair round. A round
+shares as `?round=<seed>` and scores as a whole — its holes deliberately leave
+the campaign's per-hole records alone, since a hole you happened to draw badly
+should not overwrite the best you ever played it.
+
 ## Sharing a hole
 
 Every hole has a link. The address bar tracks whatever you are playing, and
 **Share this hole** on the pause and results screens copies it:
 
 ```
-https://…/?hole=c7-4     a campaign hole
+https://…/?hole=c7-4      a campaign hole
 https://…/?seed=1837291  a generated hole, rebuilt from its seed
+https://…/?round=4242    a nine-hole round
 ```
 
 Seed links work because generation is deterministic *and* verified — the same

@@ -44,6 +44,8 @@ export interface ProgressData {
   totalShots: number;
   totalDeaths: number;
   totalPlayTime: number;
+  /** Fewest strokes in a completed round, or null before the first one. */
+  bestRound: number | null;
 }
 
 export const SCHEMA_VERSION = 1;
@@ -72,6 +74,7 @@ export const emptyProgress = (): ProgressData => ({
   totalShots: 0,
   totalDeaths: 0,
   totalPlayTime: 0,
+  bestRound: null,
 });
 
 const MEDAL_RANK: Record<Medal, number> = { none: 0, bronze: 1, silver: 2, gold: 3, ace: 4 };
@@ -169,6 +172,9 @@ export const parseProgress = (raw: string | null): ProgressData => {
   result.totalShots = isFiniteNumber(data.totalShots) ? Math.max(0, data.totalShots) : 0;
   result.totalDeaths = isFiniteNumber(data.totalDeaths) ? Math.max(0, data.totalDeaths) : 0;
   result.totalPlayTime = isFiniteNumber(data.totalPlayTime) ? Math.max(0, data.totalPlayTime) : 0;
+  // Absent in saves from before rounds existed, which is exactly "no round yet".
+  result.bestRound =
+    isFiniteNumber(data.bestRound) && data.bestRound > 0 ? Math.floor(data.bestRound) : null;
   return result;
 };
 
@@ -270,6 +276,21 @@ export class ProgressStore {
   /** Seconds of play banked across every completed hole. */
   get totalPlayTime(): number {
     return this.data.totalPlayTime;
+  }
+
+  /** Fewest strokes in a completed round, or null before the first one. */
+  get bestRound(): number | null {
+    return this.data.bestRound;
+  }
+
+  /** Records a finished round, keeping only the best. Returns true if it beat it. */
+  submitRound(strokes: number): boolean {
+    const beat = this.data.bestRound === null || strokes < this.data.bestRound;
+    if (beat) {
+      this.data.bestRound = strokes;
+      this.save();
+    }
+    return beat;
   }
 
   /** The best run's shots for a hole, for the ghost to replay. */
