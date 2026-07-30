@@ -10,6 +10,8 @@ import {
   holeVelocityAt,
   isBodyActive,
   launchBall,
+  pulseOn,
+  pulsePhase,
   stepWorld,
   type BallRuntime,
   type SimEvent,
@@ -23,6 +25,7 @@ import {
   crystal,
   gate,
   membrane,
+  pulsingWall,
   switchPad,
   timedPad,
   validateLevel,
@@ -621,5 +624,99 @@ describe('moving cups', () => {
       stars: [],
     });
     expect(issues.some((i) => i.message.includes('outside the level bounds'))).toBe(true);
+  });
+});
+
+describe('pulsing bodies', () => {
+  const beat = (period: number, duty: number, phase = 0): World =>
+    makeWorld({
+      bodies: [pulsingWall('beat', V.vec(0, -200), V.vec(0, 200), { period, duty, phase })],
+    });
+
+  it('exists for its duty fraction of the cycle and not the rest', () => {
+    const pulse = { period: 4, duty: 0.25, phase: 0 };
+    expect(pulseOn(pulse, 0)).toBe(true);
+    expect(pulseOn(pulse, 0.9)).toBe(true);
+    expect(pulseOn(pulse, 1.1)).toBe(false);
+    expect(pulseOn(pulse, 3.9)).toBe(false);
+    // And it repeats, including for times before zero.
+    expect(pulseOn(pulse, 4.1)).toBe(true);
+    expect(pulseOn(pulse, -0.5)).toBe(false);
+  });
+
+  it('reports how far through the current stretch it is', () => {
+    const pulse = { period: 4, duty: 0.5, phase: 0 };
+    // Solid from 0 to 2, gone from 2 to 4; the phase runs 0..1 across each.
+    expect(pulsePhase(pulse, 0)).toBeCloseTo(0, 5);
+    expect(pulsePhase(pulse, 1)).toBeCloseTo(0.5, 5);
+    expect(pulsePhase(pulse, 2)).toBeCloseTo(0, 5);
+    expect(pulsePhase(pulse, 3)).toBeCloseTo(0.5, 5);
+  });
+
+  it('blocks the ball on the beat and lets it through off it', () => {
+    const blocked = beat(4, 0.5);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(blocked, ball, runtime, 1);
+    expect(ball.position.x).toBeLessThan(0);
+
+    // Same shot, started in the gap half of the cycle. 400 u/s covers the 300
+    // units to the wall well inside the two seconds it is away.
+    const open = beat(4, 0.5);
+    open.time = 2.1;
+    const [ball2, runtime2] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(open, ball2, runtime2, 2);
+    expect(ball2.position.x).toBeGreaterThan(200);
+  });
+
+  it('alternates when two walls are half a cycle out of phase', () => {
+    const world = makeWorld({
+      bodies: [
+        pulsingWall('a', V.vec(-100, -200), V.vec(-100, 200), { period: 3, duty: 0.5, phase: 0 }),
+        pulsingWall('b', V.vec(100, -200), V.vec(100, 200), { period: 3, duty: 0.5, phase: 0.5 }),
+      ],
+    });
+    for (const t of [0, 0.7, 1.6, 2.4, 4.1]) {
+      const a = isBodyActive(world, world.bodies[0]!, t);
+      const b = isBodyActive(world, world.bodies[1]!, t);
+      expect(a, `t=${t}`).not.toBe(b);
+    }
+  });
+
+  it('lets a shot that was on its way through finish the trip', () => {
+    // The wall reappearing behind a ball that has already passed must not drag
+    // it back — the barrier is a gate in time, not a trap.
+    const world = beat(2, 0.5);
+    world.time = 1.05;
+    const [ball, runtime] = shoot(V.vec(-100, 0), V.vec(300, 0), 900);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeGreaterThan(200);
+    expect(runtime.alive).toBe(true);
+  });
+
+  it('rejects a pulse that never changes anything', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: { position: V.vec(300, 0) },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    };
+    for (const duty of [0, 1]) {
+      const issues = validateLevel({
+        ...base,
+        bodies: [pulsingWall('w', V.vec(0, -100), V.vec(0, 100), { period: 3, duty })],
+      });
+      expect(issues.some((i) => i.severity === 'error' && i.message.includes('never changes'))).toBe(
+        true,
+      );
+    }
+    const noPeriod = validateLevel({
+      ...base,
+      bodies: [pulsingWall('w', V.vec(0, -100), V.vec(0, 100), { period: 0, duty: 0.5 })],
+    });
+    expect(noPeriod.some((i) => i.message.includes('no period'))).toBe(true);
   });
 });

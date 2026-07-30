@@ -12,7 +12,13 @@ import {
   type Aabb,
 } from '../physics/geometry';
 import { MATERIALS, type Body, type Shape, type Zone } from '../physics/types';
-import { gravityAt, holePositionAt, isBodyActive, type World } from '../physics/world';
+import {
+  gravityAt,
+  holePositionAt,
+  isBodyActive,
+  pulsePhase,
+  type World,
+} from '../physics/world';
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
 import { colorsForBody, powerColor, type Palette } from './palette';
@@ -138,9 +144,19 @@ export class Renderer {
         // A bridge waiting on a switch is drawn as an outline. Telegraphing
         // what will appear is the difference between a puzzle and a surprise.
         if (body.addedBy) this.drawPendingBody(ctx, shape, scene.time, options.palette);
+        // The same for a pulsing body between beats — but it also gets a filling
+        // ring showing how much of the gap is left, so the rhythm is something
+        // to play to rather than something to be caught out by.
+        if (body.pulse) {
+          this.drawPendingBody(ctx, shape, scene.time, options.palette);
+          this.drawPulseClock(ctx, shape, pulsePhase(body.pulse, scene.world.time), false);
+        }
         continue;
       }
       this.drawBody(ctx, body, shape, options.palette, scene.world);
+      if (body.pulse) {
+        this.drawPulseClock(ctx, shape, pulsePhase(body.pulse, scene.world.time), true);
+      }
     }
 
     for (const boost of scene.world.boosters) {
@@ -596,6 +612,33 @@ export class Renderer {
   }
 
   /** A body that a switch has yet to bring into existence. */
+  /**
+   * A ring around a pulsing body counting down to its next change. Amber while
+   * it is solid and about to go, green while it is gone and about to return —
+   * so the answer to "can I be there in time" is on screen, not in the player's
+   * head.
+   */
+  private drawPulseClock(
+    ctx: CanvasRenderingContext2D,
+    shape: Shape,
+    phase: number,
+    solid: boolean,
+  ): void {
+    const center = shapeCenter(shape);
+    // Capped, not proportional: a long wall's own radius is half its length, and
+    // a countdown ring that size swamps the hole it is annotating.
+    const radius = clamp(shapeRadius(shape) + 12, 22, 46);
+    ctx.save();
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'butt';
+    ctx.globalAlpha = solid ? 0.5 : 0.75;
+    ctx.strokeStyle = solid ? '#ffa05a' : '#66e6b8';
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - phase));
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawPendingBody(
     ctx: CanvasRenderingContext2D,
     shape: Shape,

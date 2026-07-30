@@ -33,6 +33,9 @@ npm run dev      # play it at http://localhost:5173
 - **Beat the clock.** A pad with a ring around it springs back when the ring
   runs out, so whatever it opened is only open while the ball is still in flight.
   Some vaults need every pad thrown at once.
+- **Pulsing walls** blink in and out on a clock of their own, and nothing you do
+  changes them. Each wears a ring counting down to its next change — amber while
+  it is solid, green while it is gone.
 - **One-way membranes** are marked with chevrons showing the direction you may
   cross. There is no going back through one.
 - **Boost rings** fire the ball out along their arrows at their own fixed speed,
@@ -59,7 +62,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-60 holes across ten chapters, each introducing one idea at a time:
+66 holes across eleven chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -73,6 +76,10 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 8. Clockwork | Timed gates, one-way membranes, multi-lock vaults |
 | 9. Launch Control | Boost rings — the route becomes a relay |
 | 10. Moving Targets | The cup itself travels; the puzzle becomes *when* |
+| 11. Rhythm | Barriers blinking on a clock that waits for nobody |
+
+Finish every hole and the course closes with a card of the whole run: total
+strokes against par, holes under par, stars, feats and time.
 
 Chapters 1–5 are pure ballistics: you read the field and pick a line. From
 chapter 6 the hole itself has state, and a shot can change it — which is why

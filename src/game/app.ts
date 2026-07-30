@@ -9,6 +9,8 @@ import { Hud } from '../ui/hud';
 import { InputController } from '../ui/input';
 import {
   Overlay,
+  campaignCompleteScreen,
+  type CampaignSummary,
   helpScreen,
   isLevelUnlocked,
   buildScorecard,
@@ -16,6 +18,7 @@ import {
   levelSelectScreen,
   pauseScreen,
   scorecardScreen,
+  scorecardTotals,
   resultsScreen,
   settingsScreen,
   titleScreen,
@@ -703,7 +706,11 @@ export class GameApp {
         : null;
     const isNewBest = previousBest === null || result.strokes < previousBest;
 
+    // Captured either side of the submit: the finale is the moment the *last*
+    // unfinished hole is completed, which need not be the last hole in order.
+    const wasComplete = this.campaignComplete();
     this.progress.submit(result);
+    const justFinished = !wasComplete && this.campaignComplete();
     const upcoming = nextLevel(result.levelId);
 
     // A beat of celebration before the panel covers the screen.
@@ -711,6 +718,20 @@ export class GameApp {
       if (this.disposed || this.screen !== 'play') return;
       this.screen = 'results';
       this.hud.setVisible(false);
+
+      if (justFinished) {
+        this.audio.play('unlock');
+        this.overlay.show(
+          campaignCompleteScreen(this.campaignSummary(), {
+            onScorecard: () => this.showScorecard('title'),
+            onLevels: () => this.showLevels(),
+            onTitle: () => this.showTitle(),
+          }),
+          { onEscape: () => this.showTitle() },
+        );
+        return;
+      }
+
       this.overlay.show(
         resultsScreen(result, session.level.name, {
           hasNext: upcoming !== undefined,
@@ -724,6 +745,22 @@ export class GameApp {
         {},
       );
     }, 900);
+  }
+
+  /** True once every campaign hole has been finished at least once. */
+  private campaignComplete(): boolean {
+    return this.progress.completedCount(CAMPAIGN_IDS) >= CAMPAIGN_IDS.length;
+  }
+
+  private campaignSummary(): CampaignSummary {
+    const rows = buildScorecard(ALL_LEVELS, this.progress);
+    return {
+      totals: scorecardTotals(rows),
+      feats: this.progress.earnedFeats().length,
+      featsTotal: Object.keys(FEATS).length,
+      playTime: this.progress.totalPlayTime,
+      underPar: rows.filter((row) => row.strokes !== null && row.strokes < row.level.par).length,
+    };
   }
 
   private retry(): void {

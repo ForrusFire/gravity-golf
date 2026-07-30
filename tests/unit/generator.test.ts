@@ -102,8 +102,12 @@ describe('generateLevel', () => {
     // The verified solution only replays if the hole reacts to the ball rather
     // than to the time on the clock, so no motion and no held switches.
     for (const level of generated) {
-      for (const body of level.bodies ?? []) expect(body.motion).toBeUndefined();
+      for (const body of level.bodies ?? []) {
+        expect(body.motion).toBeUndefined();
+        expect(body.pulse).toBeUndefined();
+      }
       for (const pad of level.switches ?? []) expect(pad.holdTime).toBeUndefined();
+      expect(level.hole.motion).toBeUndefined();
     }
   });
 

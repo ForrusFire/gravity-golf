@@ -267,6 +267,11 @@ export class ProgressStore {
     return [...this.data.feats];
   }
 
+  /** Seconds of play banked across every completed hole. */
+  get totalPlayTime(): number {
+    return this.data.totalPlayTime;
+  }
+
   /** The best run's shots for a hole, for the ghost to replay. */
   bestShots(levelId: string): ShotRecord[] {
     return this.data.levels[levelId]?.bestShots ?? [];

@@ -466,6 +466,94 @@ test.describe('resilience', () => {
   });
 });
 
+test.describe('finishing the campaign', () => {
+  /** Marks every campaign hole complete except `except`. */
+  const seedProgress = async (page: Page, except: string): Promise<void> => {
+    await page.goto('/');
+    await page.evaluate((skip) => {
+      const ids = window.gravityGolf.levelIds().filter((id) => id !== skip);
+      const levels: Record<string, unknown> = {};
+      for (const id of ids) {
+        levels[id] = {
+          bestStrokes: 3,
+          bestShots: [],
+          bestStars: 3,
+          bestMedal: 'silver',
+          bestTime: 20,
+          completed: true,
+          attempts: 1,
+        };
+      }
+      localStorage.setItem(
+        'gravity-golf/progress',
+        JSON.stringify({ version: 1, levels, feats: [], totalStrokes: 0, totalShots: 0, totalDeaths: 0, totalPlayTime: 0 }),
+      );
+    }, except);
+  };
+
+  /** Drops the ball straight into the cup and waits for the hole to resolve. */
+  const sinkIt = async (page: Page): Promise<void> => {
+    await page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          ball: { position: { x: number; y: number } };
+          world: { hole: { position: { x: number; y: number }; radius: number } };
+        } | null;
+      };
+      const s = app.session!;
+      s.ball.position = {
+        x: s.world.hole.position.x,
+        y: s.world.hole.position.y - s.world.hole.radius * 0.4,
+      };
+    });
+  };
+
+  test('celebrates the last hole rather than shrugging at it', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await seedProgress(page, 'c1-1');
+    await page.goto('/?hole=c1-1');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c1-1',
+    );
+
+    await sinkIt(page);
+    await expect(page.locator('.results--finale')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Course complete' })).toBeVisible();
+    // The finale replaces the per-hole panel, so there is no Next hole button.
+    await expect(page.getByRole('button', { name: 'Next hole' })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('fires on the last hole finished, not the last hole in order', async ({ page }) => {
+    // The player who leaves hole 3 for last should still get the finale there.
+    await seedProgress(page, 'c1-3');
+    await page.goto('/?hole=c1-3');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c1-3',
+    );
+
+    await sinkIt(page);
+    await expect(page.locator('.results--finale')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('does not fire again on a replay once the course is done', async ({ page }) => {
+    await seedProgress(page, 'c1-1');
+    await page.goto('/?hole=c1-1');
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBe(
+      'c1-1',
+    );
+    await sinkIt(page);
+    await expect(page.locator('.results--finale')).toBeVisible({ timeout: 10000 });
+
+    // Play it again: an ordinary hole now, with an ordinary results panel.
+    await page.evaluate(() => window.gravityGolf.debugPlay('c1-1'));
+    await expect.poll(async () => (await sessionState(page))?.strokes, { timeout: 10000 }).toBe(0);
+    await sinkIt(page);
+    await expect(page.locator('.results')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.results--finale')).toHaveCount(0);
+  });
+});
+
 test.describe('shared links', () => {
   test('a hole link opens that hole straight away', async ({ page }) => {
     const errors = consoleErrors(page);

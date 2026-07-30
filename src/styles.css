@@ -1081,3 +1081,12 @@ body.loading::after {
     opacity: 0.55;
   }
 }
+
+/* The finale panel: the same layout, given room to breathe. */
+.results--finale .results__medal {
+  font-size: 3.4rem;
+}
+
+.results--finale .results__grid + .results__grid {
+  margin-top: 0.55rem;
+}

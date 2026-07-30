@@ -72,6 +72,16 @@ export interface GravitySpec {
 
 /* ---------------------------------------------------------------- movement */
 
+/** A body that comes and goes on a fixed cycle. */
+export interface PulseSpec {
+  /** Seconds for one full on-and-off cycle. */
+  period: number;
+  /** Fraction of the cycle the body exists for, 0..1. */
+  duty: number;
+  /** 0..1 offset into the cycle, so several bodies can alternate. */
+  phase: number;
+}
+
 export type MotionSpec =
   | {
       kind: 'orbit';
@@ -124,6 +134,11 @@ export interface Body {
    * direction. Lets a hole hand out a route you cannot take back.
    */
   oneWay?: Vec2;
+  /**
+   * Blinks in and out on its own clock. Unlike a switch, nothing the player does
+   * changes it — the hole has a rhythm and the shot has to fit inside it.
+   */
+  pulse?: PulseSpec;
   /**
    * Impacts this body survives before it shatters. Gives a hole destructible
    * geometry, so the course can change shape as it is played.

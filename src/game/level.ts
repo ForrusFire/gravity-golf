@@ -260,6 +260,14 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
     if (body.hitsToBreak !== undefined && body.hitsToBreak < 1) {
       err(`body "${body.id}" has hitsToBreak below one`);
     }
+    if (body.pulse) {
+      // A body that is never there, or always there, is not a pulse — it is a
+      // level that means something other than what it says.
+      if (body.pulse.period <= 0) err(`body "${body.id}" pulses with no period`);
+      if (body.pulse.duty <= 0 || body.pulse.duty >= 1) {
+        err(`body "${body.id}" has a pulse duty of ${body.pulse.duty}, so it never changes`);
+      }
+    }
   }
 
   const required = level.hole.requiresStars ?? 0;
@@ -484,6 +492,24 @@ export const membrane = (
   material: 'bouncy',
   style: 'ice',
   oneWay: V.normalize(through),
+});
+
+/**
+ * A barrier that blinks in and out on its own clock, phase-shifted so several
+ * can alternate. Nothing the player does changes it.
+ */
+export const pulsingWall = (
+  id: string,
+  a: Vec2,
+  b: Vec2,
+  pulse: { period: number; duty?: number; phase?: number },
+  thickness = 12,
+): Body => ({
+  id,
+  shape: { kind: 'capsule', a, b, radius: thickness },
+  material: 'metal',
+  style: 'wall',
+  pulse: { period: pulse.period, duty: pulse.duty ?? 0.5, phase: pulse.phase ?? 0 },
 });
 
 /** A block that shatters after `hits` impacts. */

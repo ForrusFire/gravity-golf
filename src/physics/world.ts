@@ -19,6 +19,7 @@ import {
   type MaterialId,
   type MotionSpec,
   type PhysicsConfig,
+  type PulseSpec,
   type Booster,
   type Portal,
   type Shape,
@@ -114,12 +115,30 @@ export const holeVelocityAt = (world: World, t = world.time): Vec2 => {
  * Whether a body currently exists. Gated bodies let a switch open a barrier or
  * drop a bridge; a shattered breakable is gone for the rest of the hole.
  */
-export const isBodyActive = (world: World, body: Body): boolean => {
+export const isBodyActive = (world: World, body: Body, t = world.time): boolean => {
   if (body.hitsToBreak !== undefined && (world.breakables[body.id] ?? 0) <= 0) return false;
   // All named switches must be on: a body can demand a sequence, not just a pass.
   if (body.removedBy !== undefined && allSwitchesOn(world, body.removedBy)) return false;
   if (body.addedBy !== undefined && !allSwitchesOn(world, body.addedBy)) return false;
+  if (body.pulse && !pulseOn(body.pulse, t)) return false;
   return true;
+};
+
+/** Where a pulsing body is in its cycle: 0 just appeared, 1 about to change. */
+export const pulsePhase = (pulse: PulseSpec, t: number): number => {
+  if (pulse.period <= 0) return 0;
+  const cycle = (((t / pulse.period + pulse.phase) % 1) + 1) % 1;
+  const duty = clamp(pulse.duty, 0, 1);
+  return cycle < duty
+    ? (duty > 0 ? cycle / duty : 1)
+    : (duty < 1 ? (cycle - duty) / (1 - duty) : 1);
+};
+
+/** True while a pulsing body exists. */
+export const pulseOn = (pulse: PulseSpec, t: number): boolean => {
+  if (pulse.period <= 0) return true;
+  const cycle = (((t / pulse.period + pulse.phase) % 1) + 1) % 1;
+  return cycle < clamp(pulse.duty, 0, 1);
 };
 
 const allSwitchesOn = (world: World, ids: string | string[]): boolean => {
@@ -162,7 +181,7 @@ const resolveBodies = (world: World, t: number): ResolvedBody[] => {
 
   const items: ResolvedBody[] = [];
   for (const body of world.bodies) {
-    if (!isBodyActive(world, body)) continue;
+    if (!isBodyActive(world, body, t)) continue;
     const shape = bodyShapeAt(body, t);
     items.push({ body, shape, center: shapeCenter(shape), radius: shapeRadius(shape) });
   }

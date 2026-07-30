@@ -655,6 +655,68 @@ export const scorecardScreen = (
   ]);
 };
 
+/* --------------------------------------------------- campaign complete */
+
+export interface CampaignSummary {
+  totals: ScorecardTotals;
+  /** Style awards earned at least once. */
+  feats: number;
+  featsTotal: number;
+  /** Seconds of play across every hole. */
+  playTime: number;
+  /** Holes finished under par. */
+  underPar: number;
+}
+
+export interface CampaignCompleteCallbacks {
+  onScorecard(): void;
+  onLevels(): void;
+  onTitle(): void;
+}
+
+/**
+ * Shown the moment the last unfinished campaign hole is completed.
+ *
+ * Reaching the end of sixty holes and getting the same panel as hole three is
+ * the game shrugging at the thing it spent the whole campaign asking for.
+ */
+export const campaignCompleteScreen = (
+  summary: CampaignSummary,
+  callbacks: CampaignCompleteCallbacks,
+): HTMLElement => {
+  const diff = summary.totals.strokes - summary.totals.par;
+  return el('div', { class: 'results results--finale' }, [
+    el('div', { class: 'results__medal', text: '🏆' }),
+    el('h2', { class: 'results__title', text: 'Course complete' }),
+    el('p', {
+      class: 'results__level',
+      text: `All ${summary.totals.holesTotal} holes, start to finish.`,
+    }),
+    el('div', { class: 'results__grid' }, [
+      statBlock('Strokes', String(summary.totals.strokes)),
+      statBlock('To par', diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`),
+      statBlock('Under par', `${summary.underPar}/${summary.totals.holesTotal}`),
+      statBlock('Time', formatTime(summary.playTime)),
+    ]),
+    el('div', { class: 'results__grid' }, [
+      statBlock('Stars', `${summary.totals.stars}/${summary.totals.starsTotal}`),
+      statBlock('Feats', `${summary.feats}/${summary.featsTotal}`),
+    ]),
+    el('p', {
+      class: 'results__previous',
+      text:
+        summary.totals.stars === summary.totals.starsTotal
+          ? 'Every star collected. There is nothing left out there.'
+          : `${summary.totals.starsTotal - summary.totals.stars} stars still out there.`,
+    }),
+    el('div', { class: 'results__buttons' }, [
+      button('See the scorecard', callbacks.onScorecard, { class: 'btn--primary' }),
+      button('All holes', callbacks.onLevels),
+      button('Main menu', callbacks.onTitle, { class: 'btn--ghost' }),
+    ]),
+  ]);
+};
+
 /* --------------------------------------------------------------- loading */
 
 /** Shown while a hole is being generated and verified in the background. */
@@ -692,6 +754,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       // pass through and the other a solid you hit, so they can never be
       // mistaken for each other, and a sixth hue would cost more than it buys.
       helpSwatch('#c792ff', 'Violet is machinery', 'A dashed ring on the ground is a switch pad — roll through it to open a gate or drop a bridge. A bridge that has not appeared yet is drawn as an outline.'),
+      helpItem('🥁', 'Pulsing walls', 'Some barriers blink in and out on their own clock — nothing you do changes them. The ring around one counts down to its next change: amber while it is solid, green while it is gone.'),
       helpItem('⏱️', 'Timed pads', 'A pad with a ring around it springs back when the ring runs out, so whatever it opened is only open while the ball is still moving. Some vaults need every pad thrown at once.'),
       helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),
       helpItem('🔒', 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
