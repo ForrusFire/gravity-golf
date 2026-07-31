@@ -842,6 +842,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       // pass through and the other a solid you hit, so they can never be
       // mistaken for each other, and a sixth hue would cost more than it buys.
       helpSwatch('#c792ff', 'Violet is machinery', 'A dashed ring on the ground is a switch pad — roll through it to open a gate or drop a bridge. A bridge that has not appeared yet is drawn as an outline.'),
+      helpItem('🌊', 'Tides', 'Whole fields can blink too — a wind that gusts, a red field only deadly half the time, a gravity well that switches off. They fade rather than vanish, and wear the same countdown ring.'),
       helpItem('🥁', 'Pulsing walls', 'Some barriers blink in and out on their own clock — nothing you do changes them. The ring around one counts down to its next change: amber while it is solid, green while it is gone.'),
       helpItem('⏱️', 'Timed pads', 'A pad with a ring around it springs back when the ring runs out, so whatever it opened is only open while the ball is still moving. Some vaults need every pad thrown at once.'),
       helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),

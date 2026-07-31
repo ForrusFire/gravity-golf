@@ -247,6 +247,16 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
     if (pad.radius < BALL_RADIUS) warn(`switch "${pad.id}" is narrower than the ball`);
   }
 
+  for (const zone of level.zones ?? []) {
+    if (!zone.pulse) continue;
+    // Same rule as a pulsing body: a field that is always there, or never, is a
+    // level saying something other than what it means.
+    if (zone.pulse.period <= 0) err(`zone "${zone.id}" pulses with no period`);
+    if (zone.pulse.duty <= 0 || zone.pulse.duty >= 1) {
+      err(`zone "${zone.id}" has a pulse duty of ${zone.pulse.duty}, so it never changes`);
+    }
+  }
+
   for (const boost of level.boosters ?? []) {
     if (ids.has(boost.id)) err(`duplicate booster id "${boost.id}"`);
     ids.add(boost.id);

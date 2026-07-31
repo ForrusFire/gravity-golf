@@ -173,17 +173,28 @@ export type BodyStyle =
 /* ------------------------------------------------------------------- zones */
 
 /** Non-colliding areas of effect. */
+interface ZoneBase {
+  id: string;
+  area: Shape;
+  /**
+   * Blinks the whole zone in and out on its own clock. A wind that gusts, a
+   * hazard field that is only lethal half the time, a gravity well that comes
+   * and goes — the field itself becomes the thing with a schedule.
+   */
+  pulse?: PulseSpec;
+}
+
 export type Zone =
-  | { id: string; kind: 'wind'; area: Shape; force: Vec2 }
-  | { id: string; kind: 'boost'; area: Shape; force: Vec2; }
+  | (ZoneBase & { kind: 'wind'; force: Vec2 })
+  | (ZoneBase & { kind: 'boost'; force: Vec2 })
   /** Radial push (positive) or pull (negative) about the area's centre. */
-  | { id: string; kind: 'vortex'; area: Shape; strength: number; swirl: number }
+  | (ZoneBase & { kind: 'vortex'; strength: number; swirl: number })
   /** Multiplies velocity by `drag` per second — nebula / slow field. */
-  | { id: string; kind: 'nebula'; area: Shape; drag: number }
+  | (ZoneBase & { kind: 'nebula'; drag: number })
   /** Instant loss on entry. */
-  | { id: string; kind: 'hazard'; area: Shape }
+  | (ZoneBase & { kind: 'hazard' })
   /** Scales all gravity felt inside — for null zones and gravity amplifiers. */
-  | { id: string; kind: 'gravityScale'; area: Shape; scale: number };
+  | (ZoneBase & { kind: 'gravityScale'; scale: number });
 
 /* ---------------------------------------------------------------- switches */
 

@@ -153,6 +153,10 @@ export const pulsePhase = (pulse: PulseSpec, t: number): number => {
     : (duty < 1 ? (cycle - duty) / (1 - duty) : 1);
 };
 
+/** True while a zone's effect applies. Zones without a pulse are always on. */
+export const zoneActive = (zone: Zone, t: number): boolean =>
+  zone.pulse === undefined || pulseOn(zone.pulse, t);
+
 /** True while a pulsing body exists. */
 export const pulseOn = (pulse: PulseSpec, t: number): boolean => {
   if (pulse.period <= 0) return true;
@@ -286,7 +290,7 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
 export const gravityScaleAt = (world: World, p: Vec2): number => {
   let scale = 1;
   for (const zone of world.zones) {
-    if (zone.kind !== 'gravityScale') continue;
+    if (zone.kind !== 'gravityScale' || !zoneActive(zone, world.time)) continue;
     if (containsPoint(zone.area, p)) scale *= zone.scale;
   }
   return scale;
@@ -338,6 +342,7 @@ export const accelerationAt = (world: World, p: Vec2, t = world.time): Vec2 => {
   let ay = g.y;
 
   for (const zone of world.zones) {
+    if (!zoneActive(zone, t)) continue;
     switch (zone.kind) {
       case 'wind':
       case 'boost': {
@@ -371,7 +376,7 @@ export const accelerationAt = (world: World, p: Vec2, t = world.time): Vec2 => {
 const dragAt = (world: World, p: Vec2): number => {
   let drag = world.config.ambientDrag;
   for (const zone of world.zones) {
-    if (zone.kind !== 'nebula') continue;
+    if (zone.kind !== 'nebula' || !zoneActive(zone, world.time)) continue;
     if (containsPoint(zone.area, p)) drag += zone.drag;
   }
   return drag;
@@ -660,7 +665,7 @@ const checkCollectibles = (world: World, ball: Ball, events: SimEvent[]): void =
 
 const checkHazardZones = (world: World, ball: Ball, events: SimEvent[]): boolean => {
   for (const zone of world.zones) {
-    if (zone.kind !== 'hazard') continue;
+    if (zone.kind !== 'hazard' || !zoneActive(zone, world.time)) continue;
     if (containsPoint(zone.area, ball.position)) {
       events.push({ type: 'death', position: ball.position, cause: 'hazard' });
       return true;

@@ -17,6 +17,7 @@ import {
   holePositionAt,
   isBodyActive,
   pulsePhase,
+  zoneActive,
   type World,
 } from '../physics/world';
 import { Camera } from './camera';
@@ -131,7 +132,9 @@ export class Renderer {
 
     if (options.showGravityField) this.drawGravityField(ctx, scene.world, options.palette);
     this.drawBoundary(ctx, scene.world, options.palette);
-    for (const zone of scene.world.zones) this.drawZone(ctx, zone, scene.time, options.palette);
+    for (const zone of scene.world.zones) {
+      this.drawZone(ctx, zone, scene.time, options.palette, scene.world.time);
+    }
     for (const portal of scene.world.portals) {
       this.drawPortal(ctx, portal.from, portal.to, portal.radius, scene.time, options.palette);
     }
@@ -355,7 +358,14 @@ export class Renderer {
     zone: Zone,
     time: number,
     palette: Palette,
+    worldTime = time,
   ): void {
+    // A pulsing zone still has to be visible while it is off, or the player is
+    // asked to plan around something that is not on screen. It goes faint, and
+    // wears the same countdown ring as a pulsing wall.
+    const on = zoneActive(zone, worldTime);
+    ctx.save();
+    if (!on) ctx.globalAlpha = 0.3;
     ctx.save();
     this.tracePath(ctx, zone.area);
 
@@ -426,6 +436,11 @@ export class Renderer {
         if (reversed) this.drawReversalGlyphs(ctx, zone.area, time, tint);
         break;
       }
+    }
+    ctx.restore();
+
+    if (zone.pulse) {
+      this.drawPulseClock(ctx, zone.area, pulsePhase(zone.pulse, worldTime), on);
     }
     ctx.restore();
   }

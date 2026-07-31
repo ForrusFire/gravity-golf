@@ -3,57 +3,9 @@ import * as V from '../../src/core/vec2';
 import { ALL_LEVELS } from '../../src/game/levels';
 import { MemoryStorage, ProgressStore } from '../../src/game/progress';
 import { PlaySession } from '../../src/game/session';
-import { solveLevel, type Shot } from '../../src/game/solver';
+import { solveLevel } from '../../src/game/solver';
 import { isLevelUnlocked } from '../../src/ui/screens';
-
-/** Runs the session until it needs input again, or the hole is finished. */
-const settle = (session: PlaySession, maxSeconds = 40): void => {
-  const steps = Math.round(maxSeconds * 60);
-  for (let i = 0; i < steps; i++) {
-    if (session.state === 'sunk') return;
-    if (session.state === 'aiming' && session.canShoot) return;
-    session.update(1 / 60);
-  }
-};
-
-/** Plays a level through a real session using the given shots. */
-const playShots = (session: PlaySession, shots: Shot[]): void => {
-  for (const shot of shots) {
-    settle(session);
-    if (session.state === 'sunk') return;
-    session.shoot(V.fromAngle(shot.angle), shot.power);
-    settle(session);
-  }
-  settle(session);
-};
-
-describe('solver solutions replay through the real game', () => {
-  // This is what makes "every hole is completable" mean anything. The solver
-  // shares the game's integrator *and* its timestep, and starts from the same
-  // settled tee, so a solution it finds is a sequence of shots a player could
-  // actually take. Gravity slingshots are chaotic: when the solver ran at a
-  // coarser step, only half its solutions survived being replayed here.
-  for (const level of ALL_LEVELS) {
-    it(`${level.id} "${level.name}" sinks when its solution is replayed`, () => {
-      // A little wider than the default: the search stands in for a skilled
-      // player, and a few holes have a solution that a coarser sweep misses.
-      const solution = solveLevel(level, {
-        angleSamples: 90,
-        powerSamples: 6,
-        maxStrokes: level.par,
-        beamWidth: 6,
-      });
-      expect(solution.solved, `no solution found within par ${level.par}`).toBe(true);
-
-      const session = new PlaySession(level);
-      playShots(session, solution.shots);
-
-      expect(session.state, `replaying ${solution.shots.length} shot(s) did not sink`).toBe('sunk');
-      expect(session.result).not.toBeNull();
-      expect(session.result!.strokes).toBeLessThanOrEqual(level.par);
-    });
-  }
-});
+import { playShots, settle } from './level-gates';
 
 describe('campaign progression', () => {
   it('unlocks the next hole each time one is completed', () => {

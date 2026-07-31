@@ -559,17 +559,23 @@ test.describe('playing a round', () => {
   });
 
   test('the title screen deals the same round to everybody today', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Round of the day' }).click();
-    await expect.poll(async () => new URL(page.url()).search, { timeout: 10000 }).toMatch(
-      /^\?round=\d+$/,
-    );
-    const first = new URL(page.url()).search;
+    // Waits for the round to have actually started before reading the address
+    // bar, rather than letting one poll cover both boot and navigation.
+    const dealARound = async (): Promise<string> => {
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Round of the day' }).click();
+      await expect
+        .poll(async () => (await sessionState(page))?.levelId, { timeout: 15000 })
+        .toBeTruthy();
+      await expect
+        .poll(async () => new URL(page.url()).search, { timeout: 15000 })
+        .toMatch(/^\?round=\d+$/);
+      return new URL(page.url()).search;
+    };
 
     // Same day, same round — that is what makes it worth comparing cards over.
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Round of the day' }).click();
-    await expect.poll(async () => new URL(page.url()).search, { timeout: 10000 }).toBe(first);
+    const first = await dealARound();
+    expect(await dealARound()).toBe(first);
   });
 
   test('leaving for a menu abandons the round', async ({ page }) => {

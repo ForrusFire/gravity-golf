@@ -12,6 +12,7 @@ import {
   launchBall,
   pulseOn,
   pulsePhase,
+  zoneActive,
   stepWorld,
   type BallRuntime,
   type SimEvent,
@@ -909,5 +910,181 @@ describe('toll gates', () => {
       bodies: [tollGate('toll', V.vec(0, -100), V.vec(0, 100), 0)],
     });
     expect(tooFew.some((i) => i.message.includes('fewer than one star'))).toBe(true);
+  });
+});
+
+describe('pulsing zones', () => {
+  const gust = (pulse?: { period: number; duty: number; phase: number }): World =>
+    makeWorld({
+      zones: [
+        {
+          id: 'gust',
+          kind: 'wind',
+          area: { kind: 'circle', center: V.vec(0, 0), radius: 400 },
+          force: V.vec(0, -900),
+          ...(pulse ? { pulse } : {}),
+        },
+      ],
+    });
+
+  it('leaves a zone with no pulse permanently on', () => {
+    const world = gust();
+    for (const t of [0, 1, 7.5, 100]) expect(zoneActive(world.zones[0]!, t)).toBe(true);
+  });
+
+  it('applies its force only during the on-phase', () => {
+    const pulse = { period: 4, duty: 0.5, phase: 0 };
+
+    // Started on: the wind lifts the ball.
+    const blowing = gust(pulse);
+    const up = createBall(V.vec(0, 0), BALL_RADIUS);
+    const upRt = createBallRuntime();
+    up.atRest = false;
+    run(blowing, up, upRt, 1);
+    expect(up.position.y).toBeLessThan(-100);
+
+    // Started in the gap: nothing pushes it anywhere.
+    const still = gust(pulse);
+    still.time = 2.05;
+    const calm = createBall(V.vec(0, 0), BALL_RADIUS);
+    const calmRt = createBallRuntime();
+    calm.atRest = false;
+    run(still, calm, calmRt, 1);
+    expect(Math.abs(calm.position.y)).toBeLessThan(5);
+  });
+
+  it('makes a hazard field lethal only while it is up', () => {
+    const hazard = (): World =>
+      makeWorld({
+        zones: [
+          {
+            id: 'tide',
+            kind: 'hazard',
+            area: { kind: 'circle', center: V.vec(0, 0), radius: 200 },
+            pulse: { period: 4, duty: 0.5, phase: 0 },
+          },
+        ],
+      });
+
+    const deadly = hazard();
+    const [a, ra] = shoot(V.vec(-400, 0), V.vec(400, 0), 500);
+    run(deadly, a, ra, 1);
+    expect(ra.alive).toBe(false);
+
+    // The same crossing, made during the gap, is survivable.
+    const safe = hazard();
+    safe.time = 2.05;
+    const [b, rb] = shoot(V.vec(-400, 0), V.vec(400, 0), 900);
+    // A full second still lands inside the two-second gap.
+    run(safe, b, rb, 1);
+    expect(rb.alive).toBe(true);
+    expect(b.position.x).toBeGreaterThan(200);
+  });
+
+  it('switches a gravity field off and on', () => {
+    const scaled = (): World =>
+      makeWorld({
+        bodies: [
+          {
+            id: 'core',
+            // Close and strong enough that one second of pull is unmistakable:
+            // 900 at four radii away moves the ball ten units, which is not a
+            // difference worth asserting on.
+            shape: { kind: 'circle', center: V.vec(0, 200), radius: 60 },
+            material: 'rock',
+            gravity: { strength: 2400, range: 2000 },
+          },
+        ],
+        zones: [
+          {
+            id: 'slack',
+            kind: 'gravityScale',
+            area: { kind: 'circle', center: V.vec(0, 0), radius: 300 },
+            scale: 0,
+            pulse: { period: 4, duty: 0.5, phase: 0 },
+          },
+        ],
+      });
+
+    // Zone up: the pull is cancelled and the ball barely moves.
+    const cancelled = scaled();
+    const a = createBall(V.vec(0, 0), BALL_RADIUS);
+    const ra = createBallRuntime();
+    a.atRest = false;
+    run(cancelled, a, ra, 1);
+    const held = a.position.y;
+
+    // Zone down: the same core pulls it in.
+    const pulling = scaled();
+    pulling.time = 2.05;
+    const b = createBall(V.vec(0, 0), BALL_RADIUS);
+    const rb = createBallRuntime();
+    b.atRest = false;
+    run(pulling, b, rb, 1);
+    expect(b.position.y).toBeGreaterThan(held + 50);
+  });
+
+  it('alternates two zones half a cycle apart', () => {
+    const world = makeWorld({
+      zones: [
+        {
+          id: 'flood',
+          kind: 'wind',
+          area: { kind: 'circle', center: V.vec(-200, 0), radius: 100 },
+          force: V.vec(400, 0),
+          pulse: { period: 3, duty: 0.5, phase: 0 },
+        },
+        {
+          id: 'ebb',
+          kind: 'wind',
+          area: { kind: 'circle', center: V.vec(200, 0), radius: 100 },
+          force: V.vec(-400, 0),
+          pulse: { period: 3, duty: 0.5, phase: 0.5 },
+        },
+      ],
+    });
+    for (const t of [0, 0.7, 1.6, 2.4, 4.1]) {
+      expect(zoneActive(world.zones[0]!, t), `t=${t}`).not.toBe(zoneActive(world.zones[1]!, t));
+    }
+  });
+
+  it('rejects a zone pulse that never changes anything', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: { position: V.vec(300, 0) },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [],
+    };
+    const always = validateLevel({
+      ...base,
+      zones: [
+        {
+          id: 'z',
+          kind: 'hazard',
+          area: { kind: 'circle', center: V.vec(0, 0), radius: 40 },
+          pulse: { period: 3, duty: 1, phase: 0 },
+        },
+      ],
+    });
+    expect(always.some((i) => i.severity === 'error' && i.message.includes('never changes'))).toBe(
+      true,
+    );
+
+    const timeless = validateLevel({
+      ...base,
+      zones: [
+        {
+          id: 'z',
+          kind: 'hazard',
+          area: { kind: 'circle', center: V.vec(0, 0), radius: 40 },
+          pulse: { period: 0, duty: 0.5, phase: 0 },
+        },
+      ],
+    });
+    expect(timeless.some((i) => i.message.includes('no period'))).toBe(true);
   });
 });

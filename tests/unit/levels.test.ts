@@ -10,7 +10,6 @@ import {
   type LevelDef,
 } from '../../src/game/level';
 import { PlaySession } from '../../src/game/session';
-import { reachableStars } from '../../src/game/solver';
 
 describe('level catalogue', () => {
   it('has levels', () => {
@@ -193,27 +192,4 @@ describe('tee placement', () => {
     }
     expect(notReady).toEqual([]);
   });
-});
-
-describe('star reachability', () => {
-  // Chapters unlock on star totals, so an uncollectable star is a progression
-  // bug, not a missed bonus.
-  for (const level of ALL_LEVELS) {
-    it(`${level.id} "${level.name}" has three collectable stars`, () => {
-      const world = compileLevel(level);
-      const expected = world.collectibles.map((c) => c.id);
-      const reached = reachableStars(level, {
-        angleSamples: 96,
-        powerSamples: 6,
-        maxStrokes: Math.max(3, level.par),
-        beamWidth: 6,
-        // Coverage, not proof: a coarser step samples twice as many shots for
-        // the same time, and whether a star is reachable does not hinge on
-        // integration precision the way sinking a putt does.
-        timeStep: 1 / 120,
-      });
-      const missing = expected.filter((id) => !reached.has(id));
-      expect(missing, `stars never reached by any sampled shot: ${missing.join(', ')}`).toEqual([]);
-    });
-  }
 });

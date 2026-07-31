@@ -40,6 +40,9 @@ npm run dev      # play it at http://localhost:5173
 - **Pulsing walls** blink in and out on a clock of their own, and nothing you do
   changes them. Each wears a ring counting down to its next change — amber while
   it is solid, green while it is gone.
+- **Whole fields can blink too** — a wind that gusts, a hazard field that is only
+  deadly half the time, a gravity well that switches off. They fade rather than
+  vanish, so you can plan around something that is not currently there.
 - **One-way membranes** are marked with chevrons showing the direction you may
   cross. There is no going back through one.
 - **Boost rings** fire the ball out along their arrows at their own fixed speed,
@@ -66,7 +69,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-78 holes across thirteen chapters, each introducing one idea at a time:
+84 holes across fourteen chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -83,6 +86,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 11. Rhythm | Barriers blinking on a clock that waits for nobody |
 | 12. Approach | Cups that only take the ball from one direction |
 | 13. Toll Roads | Stars stop being a bonus and become the road |
+| 14. Tides | The fields themselves come and go |
 
 Finish every hole and the course closes with a card of the whole run: total
 strokes against par, holes under par, stars, feats and time.
@@ -205,7 +209,16 @@ npm test           # unit tests only
 npm run test:e2e   # Playwright, desktop and mobile viewports
 ```
 
-Two of the suites are worth calling out:
+The per-level gates — replay, star reachability and forgiveness — are the slowest
+thing here and grow with every chapter. Vitest parallelises across *files*, not
+within one, so a single file looping over every hole pinned one worker at the
+tail while the others sat idle. They are sharded across `gates-*.test.ts` instead,
+interleaved so each slice gets a mix of cheap and expensive holes. On a
+four-core box that took the suite from 377s to 331s; the remainder is simply
+CPU-bound, so the honest way to make it faster is to do less work, not to
+schedule it better.
+
+Three of the suites are worth calling out:
 
 - **Every hole is proven completable.** A beam search finds a solution within
   par for each level, and that exact sequence of shots is then replayed through
