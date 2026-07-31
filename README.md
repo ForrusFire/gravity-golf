@@ -35,6 +35,8 @@ npm run dev      # play it at http://localhost:5173
 - **Beat the clock.** A pad with a ring around it springs back when the ring
   runs out, so whatever it opened is only open while the ball is still in flight.
   Some vaults need every pad thrown at once.
+- **Toll gates** carry star pips and lift once you have collected that many. On
+  those holes the stars stop being a bonus and become the road.
 - **Pulsing walls** blink in and out on a clock of their own, and nothing you do
   changes them. Each wears a ring counting down to its next change — amber while
   it is solid, green while it is gone.
@@ -64,7 +66,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-72 holes across twelve chapters, each introducing one idea at a time:
+78 holes across thirteen chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -80,6 +82,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 10. Moving Targets | The cup itself travels; the puzzle becomes *when* |
 | 11. Rhythm | Barriers blinking on a clock that waits for nobody |
 | 12. Approach | Cups that only take the ball from one direction |
+| 13. Toll Roads | Stars stop being a bonus and become the road |
 
 Finish every hole and the course closes with a card of the whole run: total
 strokes against par, holes under par, stars, feats and time.
@@ -96,7 +99,8 @@ with chevrons rising through it reverses gravity, **amber** amplifies it, and
 
 ## Rounds
 
-**Play a round** deals nine campaign holes and runs them back to back as one
+**Round of the day** deals nine campaign holes — the same nine for everybody,
+derived from the date, so cards are worth comparing. It and runs them back to back as one
 continuous score — no panel between holes, one card at the end, and a personal
 best across every round you have played. The holes are drawn deterministically
 from a seed and walk up through the chapters, so a round ramps the way the
@@ -226,6 +230,11 @@ Two of the suites are worth calling out:
   is the only search allowed a wall-clock budget, because a time-bounded search
   gives different answers on different machines and "this hole is completable"
   must not depend on how fast the box was.
+- **Star reachability carries collected stars forward.** It used to clear them
+  between shots, which looked safer — "having banked one must not hide it from a
+  later branch" — but became wrong the moment collecting a star could open a
+  gate. Every star behind a toll was reported unreachable. Clearing was never
+  needed anyway: the seen-set accumulates across the whole search.
 - **No hole can be won by accident.** A blind sweep of opening shots must sink
   each hole (outside the tutorial chapter) less than 7% of the time. This catches
   what completability cannot: three holes had shipped with the cup sitting at the

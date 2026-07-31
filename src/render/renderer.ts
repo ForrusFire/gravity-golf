@@ -157,6 +157,11 @@ export class Renderer {
       if (body.pulse) {
         this.drawPulseClock(ctx, shape, pulsePhase(body.pulse, scene.world.time), true);
       }
+      if (body.needsStars !== undefined) {
+        const owed =
+          body.needsStars - scene.world.collectibles.filter((c) => c.collected).length;
+        this.drawToll(ctx, shape, Math.max(0, owed), options.palette);
+      }
     }
 
     for (const boost of scene.world.boosters) {
@@ -636,6 +641,30 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(center.x, center.y, radius, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - phase));
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Star pips on a toll gate, counting what is still owed. Without them the wall
+   * is indistinguishable from a permanent one and the stars look optional.
+   */
+  private drawToll(
+    ctx: CanvasRenderingContext2D,
+    shape: Shape,
+    owed: number,
+    palette: Palette,
+  ): void {
+    if (owed <= 0) return;
+    const center = shapeCenter(shape);
+    ctx.save();
+    ctx.fillStyle = palette.collectible;
+    ctx.globalAlpha = 0.95;
+    const spread = 13;
+    for (let i = 0; i < owed; i++) {
+      const x = center.x + (i - (owed - 1) / 2) * spread;
+      this.traceStar(ctx, x, center.y, 5.5);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -1240,21 +1269,26 @@ export class Renderer {
       ctx.rotate(spin);
       ctx.fillStyle = palette.collectible;
       ctx.beginPath();
-      const spikes = 5;
-      const outer = item.radius;
-      const inner = item.radius * 0.44;
-      for (let i = 0; i < spikes * 2; i++) {
-        const r = i % 2 === 0 ? outer : inner;
-        const a = (i / (spikes * 2)) * TAU - Math.PI / 2;
-        const x = Math.cos(a) * r;
-        const y = Math.sin(a) * r;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
+      this.traceStar(ctx, 0, 0, item.radius);
       ctx.fill();
       ctx.restore();
     }
+  }
+
+  /** A five-pointed star, so a toll pip is the same shape as the thing it wants. */
+  private traceStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
+    const spikes = 5;
+    const inner = radius * 0.44;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+      const r = i % 2 === 0 ? radius : inner;
+      const a = (i / (spikes * 2)) * TAU - Math.PI / 2;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
   }
 
   private drawTrail(

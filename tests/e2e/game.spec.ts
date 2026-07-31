@@ -558,6 +558,20 @@ test.describe('playing a round', () => {
     await expect(page.getByText('Best round yet!')).toBeVisible();
   });
 
+  test('the title screen deals the same round to everybody today', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Round of the day' }).click();
+    await expect.poll(async () => new URL(page.url()).search, { timeout: 10000 }).toMatch(
+      /^\?round=\d+$/,
+    );
+    const first = new URL(page.url()).search;
+
+    // Same day, same round — that is what makes it worth comparing cards over.
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Round of the day' }).click();
+    await expect.poll(async () => new URL(page.url()).search, { timeout: 10000 }).toBe(first);
+  });
+
   test('leaving for a menu abandons the round', async ({ page }) => {
     await page.goto('/?round=555');
     await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10000 }).toBeTruthy();

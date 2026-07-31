@@ -130,7 +130,7 @@ export const titleScreen = (
       button('Select hole', callbacks.onLevels),
       button(dailyDone ? "Daily challenge ✓" : 'Daily challenge', callbacks.onDaily),
       button('Random hole', callbacks.onRandom),
-      button('Play a round', callbacks.onRound),
+      button('Round of the day', callbacks.onRound),
       button('Scorecard', callbacks.onScorecard),
       button('How to play', callbacks.onHelp),
       button('Settings', callbacks.onSettings),
@@ -522,6 +522,8 @@ export interface ScorecardRow {
   strokes: number | null;
   stars: number;
   medal: Medal;
+  /** Fastest completion in seconds, or null when never finished. */
+  time: number | null;
 }
 
 export const buildScorecard = (levels: LevelDef[], progress: ProgressStore): ScorecardRow[] =>
@@ -535,6 +537,8 @@ export const buildScorecard = (levels: LevelDef[], progress: ProgressStore): Sco
       strokes: played ? record!.bestStrokes : null,
       stars: record?.bestStars ?? 0,
       medal: record?.bestMedal ?? 'none',
+      // Recorded since the first build and never shown until now.
+      time: played && Number.isFinite(record!.bestTime) ? record!.bestTime : null,
     };
   });
 
@@ -591,6 +595,7 @@ export const scorecardScreen = (
           el('th', { attrs: { scope: 'col' }, text: 'Par' }),
           el('th', { attrs: { scope: 'col' }, text: 'Best' }),
           el('th', { attrs: { scope: 'col' }, text: 'To par' }),
+          el('th', { attrs: { scope: 'col' }, text: 'Best time' }),
           el('th', { attrs: { scope: 'col' }, text: 'Stars' }),
         ]),
       ]),
@@ -616,6 +621,7 @@ export const scorecardScreen = (
                       : '',
               text: row.strokes === null ? '—' : formatToPar(row.strokes, row.level.par),
             }),
+            el('td', { text: row.time === null ? '—' : formatTime(row.time) }),
             el('td', {}, [starRow(row.stars)]),
           ]),
         ),
@@ -841,6 +847,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),
       helpItem('🔒', 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
       helpSwatch('#8fdcf5', 'Membranes', 'Chevrons show the one direction you may cross. There is no coming back through one.'),
+      helpItem('⭐', 'Toll gates', 'A barrier with star pips on it lifts once you have collected that many. On those holes the stars are not a bonus — they are the road.'),
       helpSwatch('#a6f259', 'Boost rings', 'A lime ring fires the ball out along its arrows at its own fixed speed, whatever speed you arrived at. Get into it however you like — the exit is always the same.'),
     ]),
 

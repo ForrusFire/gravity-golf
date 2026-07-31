@@ -140,6 +140,12 @@ export interface Body {
    */
   pulse?: PulseSpec;
   /**
+   * A toll gate: present until this many stars have been collected. Where
+   * `Hole.requiresStars` makes the stars the goal, this makes them the road —
+   * they stop being a bonus and become the way through.
+   */
+  needsStars?: number;
+  /**
    * Impacts this body survives before it shatters. Gives a hole destructible
    * geometry, so the course can change shape as it is played.
    */

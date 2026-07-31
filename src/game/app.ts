@@ -38,6 +38,7 @@ import {
 import { GhostRunner } from './ghost';
 import {
   buildRound,
+  dailyRoundSeed,
   randomRoundSeed,
   roundFinished,
   roundStrokes,
@@ -919,7 +920,9 @@ export class GameApp {
           onScorecard: () => this.showScorecard('title'),
           onDaily: () => void this.playDaily(),
           onRandom: () => void this.playRandom(),
-          onRound: () => this.playRound(randomRoundSeed()),
+          // Today's round, the same nine for everybody — the shareable one. A
+          // fresh random round is one button away on the card at the end.
+          onRound: () => this.playRound(dailyRoundSeed(new Date())),
         },
         this.progress,
         CAMPAIGN_IDS,

@@ -27,6 +27,7 @@ import {
   membrane,
   pulsingWall,
   switchPad,
+  tollGate,
   timedPad,
   validateLevel,
   type LevelDef,
@@ -828,5 +829,85 @@ describe('directional cups', () => {
       hole: { position: V.vec(200, 0), approach: { direction: V.vec(0, 1), tolerance: 0 } },
     });
     expect(nothing.some((i) => i.message.includes('no heading at all'))).toBe(true);
+  });
+});
+
+describe('toll gates', () => {
+  /** A wall across the middle that lifts once `stars` have been collected. */
+  const tollWorld = (stars: number): World =>
+    makeWorld({
+      bodies: [tollGate('toll', V.vec(0, -300), V.vec(0, 300), stars)],
+      collectibles: [
+        { id: 's1', position: V.vec(-160, 0), radius: 13, collected: false },
+        { id: 's2', position: V.vec(-160, 90), radius: 13, collected: false },
+      ],
+    });
+
+  it('blocks the ball until the fare is paid', () => {
+    const world = tollWorld(1);
+    const [ball, runtime] = shoot(V.vec(-300, -60), V.vec(300, -60), 400);
+    run(world, ball, runtime, 2);
+    expect(ball.position.x).toBeLessThan(0);
+  });
+
+  it('lifts the moment the last star it wants is collected', () => {
+    // Straight through the star and on through the gate in one shot: the gate
+    // has to notice mid-flight, not at the start of the next stroke.
+    const world = tollWorld(1);
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    const events = run(world, ball, runtime, 2);
+    expect(events.some((e) => e.type === 'collect')).toBe(true);
+    expect(ball.position.x).toBeGreaterThan(200);
+  });
+
+  it('counts every star, not just the ones it names', () => {
+    const world = tollWorld(2);
+    // One star is not enough.
+    const [a, ra] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, a, ra, 2);
+    expect(a.position.x).toBeLessThan(0);
+
+    // With both banked it opens.
+    world.collectibles[1]!.collected = true;
+    const [b, rb] = shoot(V.vec(-300, -60), V.vec(300, -60), 400);
+    run(world, b, rb, 2);
+    expect(b.position.x).toBeGreaterThan(200);
+  });
+
+  it('invalidates the resolved-body cache when a star is taken', () => {
+    // The cache is keyed partly on time, so it happens to rebuild each step —
+    // but a toll gate changing state has to bump the revision outright, or the
+    // next thing to read bodies at the same instant sees a wall that has gone.
+    const world = tollWorld(1);
+    const before = world.revision ?? 0;
+    const [ball, runtime] = shoot(V.vec(-300, 0), V.vec(300, 0), 400);
+    run(world, ball, runtime, 1);
+    expect(world.revision ?? 0).toBeGreaterThan(before);
+  });
+
+  it('rejects a toll no one could ever pay', () => {
+    const base: LevelDef = {
+      id: 'bad',
+      name: 'Bad',
+      chapter: 0,
+      par: 2,
+      tee: V.vec(-300, 0),
+      hole: { position: V.vec(300, 0) },
+      bounds: { minX: -400, minY: -300, maxX: 400, maxY: 300 },
+      stars: [V.vec(-100, 0)],
+    };
+    const tooMany = validateLevel({
+      ...base,
+      bodies: [tollGate('toll', V.vec(0, -100), V.vec(0, 100), 3)],
+    });
+    expect(tooMany.some((i) => i.severity === 'error' && i.message.includes('only has 1'))).toBe(
+      true,
+    );
+
+    const tooFew = validateLevel({
+      ...base,
+      bodies: [tollGate('toll', V.vec(0, -100), V.vec(0, 100), 0)],
+    });
+    expect(tooFew.some((i) => i.message.includes('fewer than one star'))).toBe(true);
   });
 });

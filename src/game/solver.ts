@@ -404,11 +404,16 @@ export const reachableStars = (
 
   const base = initialBoardState(world);
   /**
-   * Machine state carries forward (a gate opened on stroke one stays open), but
-   * pickups are cleared every shot: this asks whether each star is *reachable*,
-   * so having already banked one must not hide it from a later branch.
+   * Everything carries forward, pickups included.
+   *
+   * Clearing pickups each shot used to look safer — "having banked one must not
+   * hide it from a later branch" — but it is wrong once collecting a star can
+   * change the course. A toll gate keyed to the star count could never open
+   * during this search, so every star behind one was reported unreachable. And
+   * clearing was never needed anyway: `seen` accumulates across the whole
+   * search, so a branch that already holds a star has still recorded it.
    */
-  const carry = (state: BoardState): BoardState => ({ ...state, collected: new Set<string>() });
+  const carry = (state: BoardState): BoardState => state;
 
   let frontier: Array<{ position: Vec2; time: number; state: BoardState }> = [
     { position: settledTee(level), time: 0, state: carry(base) },

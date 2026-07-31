@@ -276,6 +276,14 @@ export const validateLevel = (level: LevelDef): ValidationIssue[] => {
     if (body.hitsToBreak !== undefined && body.hitsToBreak < 1) {
       err(`body "${body.id}" has hitsToBreak below one`);
     }
+    if (body.needsStars !== undefined) {
+      const total = (level.stars ?? []).length;
+      if (body.needsStars < 1) err(`body "${body.id}" needs fewer than one star, so it is never there`);
+      // A toll nobody can pay is a wall pretending to be a puzzle.
+      if (body.needsStars > total) {
+        err(`body "${body.id}" needs ${body.needsStars} stars but the hole only has ${total}`);
+      }
+    }
     if (body.pulse) {
       // A body that is never there, or always there, is not a pulse — it is a
       // level that means something other than what it says.
@@ -526,6 +534,21 @@ export const pulsingWall = (
   material: 'metal',
   style: 'wall',
   pulse: { period: pulse.period, duty: pulse.duty ?? 0.5, phase: pulse.phase ?? 0 },
+});
+
+/** A barrier that lifts once `stars` of the hole's stars have been collected. */
+export const tollGate = (
+  id: string,
+  a: Vec2,
+  b: Vec2,
+  stars: number,
+  thickness = 12,
+): Body => ({
+  id,
+  shape: { kind: 'capsule', a, b, radius: thickness },
+  material: 'metal',
+  style: 'wall',
+  needsStars: stars,
 });
 
 /** A block that shatters after `hits` impacts. */

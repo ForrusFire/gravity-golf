@@ -133,7 +133,14 @@ export const isBodyActive = (world: World, body: Body, t = world.time): boolean 
   if (body.removedBy !== undefined && allSwitchesOn(world, body.removedBy)) return false;
   if (body.addedBy !== undefined && !allSwitchesOn(world, body.addedBy)) return false;
   if (body.pulse && !pulseOn(body.pulse, t)) return false;
+  if (body.needsStars !== undefined && collectedCount(world) >= body.needsStars) return false;
   return true;
+};
+
+const collectedCount = (world: World): number => {
+  let n = 0;
+  for (const item of world.collectibles) if (item.collected) n++;
+  return n;
 };
 
 /** Where a pulsing body is in its cycle: 0 just appeared, 1 about to change. */
@@ -642,6 +649,10 @@ const checkCollectibles = (world: World, ball: Ball, events: SimEvent[]): void =
     const r = item.radius + ball.radius;
     if (V.distanceSq(ball.position, item.position) <= r * r) {
       item.collected = true;
+      // A toll gate keyed to the star count has just changed state, so the
+      // resolved-body cache must not survive this. It happens to rebuild anyway
+      // once the clock ticks, but relying on that is a trap for the next person.
+      world.revision = (world.revision ?? 0) + 1;
       events.push({ type: 'collect', id: item.id, position: item.position });
     }
   }

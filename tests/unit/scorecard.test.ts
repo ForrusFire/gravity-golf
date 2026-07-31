@@ -113,3 +113,26 @@ describe('isLevelUnlocked', () => {
     expect(isLevelUnlocked(2, LEVELS, progress)).toBe(false);
   });
 });
+
+describe('best times', () => {
+  it('reports a time only for holes actually finished', () => {
+    const storage = new MemoryStorage();
+    const progress = new ProgressStore(storage);
+    progress.submit({ ...result('a', 3, 3, 2), time: 42.5 });
+
+    const rows = buildScorecard(LEVELS, progress);
+    expect(rows[0]!.time).toBe(42.5);
+    // Never played, so there is nothing to report rather than a zero.
+    expect(rows[1]!.time).toBeNull();
+  });
+
+  it('keeps the fastest run, not the latest', () => {
+    const progress = new ProgressStore(new MemoryStorage());
+    progress.submit({ ...result('a', 3, 3, 2), time: 30 });
+    progress.submit({ ...result('a', 3, 3, 2), time: 55 });
+    expect(buildScorecard(LEVELS, progress)[0]!.time).toBe(30);
+
+    progress.submit({ ...result('a', 3, 3, 2), time: 21 });
+    expect(buildScorecard(LEVELS, progress)[0]!.time).toBe(21);
+  });
+});
