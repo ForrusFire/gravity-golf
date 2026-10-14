@@ -2384,6 +2384,7 @@ export class Renderer {
   resetDecor(): void {
     this.decorCache.clear();
     this.hits.clear();
+    this.cupRejectedAt = -Infinity;
     this.painter.clear();
   }
 }
