@@ -193,6 +193,39 @@ export class Hud {
     }
   }
 
+  /**
+   * A star flying from where it was picked up to its slot in the readout, so
+   * the eye follows it to the count. `from` is in viewport pixels.
+   */
+  flyStar(from: { x: number; y: number }, slot: number): void {
+    const target = this.starHolder.children[slot] as HTMLElement | undefined;
+    if (!target || typeof document === 'undefined') return;
+    const to = target.getBoundingClientRect();
+    const host = this.root.getBoundingClientRect();
+    const star = el('span', { class: 'hud__flying-star', text: '★', attrs: { 'aria-hidden': 'true' } });
+    star.style.left = `${from.x}px`;
+    star.style.top = `${from.y}px`;
+    this.root.append(star);
+    const dx = to.left + to.width / 2 - host.left - from.x;
+    const dy = to.top + to.height / 2 - host.top - from.y;
+    const animation = star.animate?.(
+      [
+        { transform: 'translate(-50%, -50%) scale(1.8)', opacity: 1 },
+        { transform: `translate(calc(-50% + ${dx * 0.35}px), calc(-50% + ${dy * 0.2 - 40}px)) scale(1.4)`, opacity: 1, offset: 0.35 },
+        { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.8)`, opacity: 0.9 },
+      ],
+      { duration: 650, easing: 'cubic-bezier(0.5, 0, 0.6, 1)' },
+    );
+    if (!animation) {
+      star.remove();
+      return;
+    }
+    animation.onfinish = () => {
+      star.remove();
+      bump(target);
+    };
+  }
+
   /** Shows a short message near the bottom of the screen. */
   showToast(message: string, seconds = 1.8, tone: 'neutral' | 'good' | 'bad' = 'neutral'): void {
     this.toast.textContent = message;

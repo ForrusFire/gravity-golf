@@ -1441,3 +1441,13 @@ body.loading::after {
   font-size: 0.85rem;
   animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.3s backwards;
 }
+
+.hud__flying-star {
+  position: absolute;
+  z-index: 30;
+  color: var(--star, #ffd25a);
+  font-size: 1.1rem;
+  pointer-events: none;
+  text-shadow: 0 0 12px rgba(255, 210, 90, 0.9);
+  transform: translate(-50%, -50%);
+}

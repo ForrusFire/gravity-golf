@@ -568,6 +568,9 @@ export class GameApp {
           this.audio.play('star');
           particles.starPop(event.position, palette.collectible);
           this.hud.showToast(`Star ${event.total} of ${session.totalStars}`, 1.4, 'good');
+          if (this.screen === 'play' && !this.progress.settings.reducedMotion) {
+            this.hud.flyStar(camera.worldToScreen(event.position), event.total - 1);
+          }
           break;
 
         case 'star-lost':
