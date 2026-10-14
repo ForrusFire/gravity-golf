@@ -51,10 +51,15 @@ export class Overlay {
     return !this.root.classList.contains('overlay--hidden');
   }
 
-  show(content: HTMLElement, options: { onEscape?: () => void; wide?: boolean } = {}): void {
+  show(
+    content: HTMLElement,
+    options: { onEscape?: () => void; wide?: boolean; showcase?: boolean } = {},
+  ): void {
     this.lastFocused = document.activeElement;
     clear(this.panel);
     this.panel.classList.toggle('panel--wide', options.wide === true);
+    // The title lets the scene behind it show through.
+    this.root.classList.toggle('overlay--showcase', options.showcase === true);
     this.panel.append(content);
     this.onEscape = options.onEscape ?? null;
     this.root.classList.remove('overlay--hidden');
@@ -126,14 +131,20 @@ export const titleScreen = (
       text: 'Putt through orbital mechanics. Let the planets do the work.',
     }),
     el('div', { class: 'title__buttons' }, [
-      button(completed > 0 ? 'Continue' : 'Play', callbacks.onPlay, { class: 'btn--primary' }),
+      button(completed > 0 ? 'Continue' : 'Play', callbacks.onPlay, {
+        class: 'btn--primary btn--hero',
+      }),
       button('Select hole', callbacks.onLevels),
-      button(dailyDone ? "Daily challenge ✓" : 'Daily challenge', callbacks.onDaily),
-      button('Random hole', callbacks.onRandom),
-      button('Round of the day', callbacks.onRound),
-      button('Scorecard', callbacks.onScorecard),
-      button('How to play', callbacks.onHelp),
-      button('Settings', callbacks.onSettings),
+      el('div', { class: 'title__grid' }, [
+        button(dailyDone ? 'Daily challenge ✓' : 'Daily challenge', callbacks.onDaily),
+        button('Round of the day', callbacks.onRound),
+        button('Random hole', callbacks.onRandom),
+        button('Scorecard', callbacks.onScorecard),
+      ]),
+      el('div', { class: 'title__grid' }, [
+        button('How to play', callbacks.onHelp, { class: 'btn--ghost' }),
+        button('Settings', callbacks.onSettings, { class: 'btn--ghost' }),
+      ]),
     ]),
     el('p', {
       class: 'title__progress',

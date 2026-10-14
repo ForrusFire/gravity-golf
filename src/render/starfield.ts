@@ -91,6 +91,34 @@ export class Starfield {
     ctx.globalAlpha = 1;
   }
 
+  private vignette: { key: string; canvas: HTMLCanvasElement | OffscreenCanvas | null } | null =
+    null;
+
+  /**
+   * Darkens the corners so the eye settles on the middle of the hole, the way a
+   * lens does. Baked per viewport size: a screen-sized radial gradient is the
+   * most expensive single fill a 2D canvas does, and it never changes.
+   */
+  drawVignette(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    const key = `${Math.round(width)}x${Math.round(height)}`;
+    if (this.vignette?.key !== key) {
+      const canvas = createCanvas(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)));
+      const vctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
+      if (canvas && vctx) {
+        const r = Math.hypot(width, height) / 2;
+        const grad = vctx.createRadialGradient(width / 2, height / 2, r * 0.45, width / 2, height / 2, r);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,6,0.55)');
+        vctx.fillStyle = grad;
+        vctx.fillRect(0, 0, width, height);
+      }
+      this.vignette = { key, canvas };
+    }
+    if (this.vignette.canvas) {
+      ctx.drawImage(this.vignette.canvas as CanvasImageSource, 0, 0, width, height);
+    }
+  }
+
   /** Rasterises each depth band once for the given palette. */
   private bake(palette: Palette): void {
     const key = `${palette.star}|${palette.nebulaA}|${palette.nebulaB}`;
@@ -109,11 +137,23 @@ export class Starfield {
         const cx = rng.range(0, size);
         const cy = rng.range(0, size);
         const r = rng.range(size * 0.22, size * 0.45);
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0, rng.bool() ? palette.nebulaA : palette.nebulaB);
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+        const color = rng.bool() ? palette.nebulaA : palette.nebulaB;
+        // Painted toroidally — once per neighbouring tile. A nebula near the
+        // edge of the tile used to be cut off flat, and since the tile repeats
+        // across the screen that cut showed as a hard vertical seam on every
+        // hole.
+        for (const ox of [-size, 0, size]) {
+          for (const oy of [-size, 0, size]) {
+            const x = cx + ox;
+            const y = cy + oy;
+            if (x + r < 0 || x - r > size || y + r < 0 || y - r > size) continue;
+            const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+            grad.addColorStop(0, color);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+          }
+        }
       }
 
       ctx.fillStyle = palette.star;

@@ -22,7 +22,8 @@ import {
 } from '../physics/world';
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
-import { colorsForBody, powerColor, type Palette } from './palette';
+import { colorsForBody, powerColor, styleForBody, type BodyColors, type Palette } from './palette';
+import { LIGHT, PlanetPainter, lighten } from './sprites';
 import { Starfield } from './starfield';
 import type { BallSkin } from '../game/skins';
 
@@ -60,6 +61,8 @@ export interface Scene {
   ghost: { position: Vec2; trail: Vec2[] } | null;
   /** The path of a suggested shot, drawn while the hint is on screen. */
   hintPath: Vec2[] | null;
+  /** A menu backdrop: no cup to point at. */
+  backdrop?: boolean;
 }
 
 const overlaps = (a: Aabb, b: Aabb): boolean =>
@@ -70,6 +73,9 @@ const BOOST_COLOR = '#a6f259';
 
 /** Only solid ground gets cratered — a star or a goo blob should not. */
 const ROCKY_STYLES = new Set<string>(['planet', 'moon', 'asteroid', 'sand']);
+
+/** Styles with a pre-painted sprite. Suns, black holes and bumpers move or glow, so stay live. */
+const PAINTED_STYLES = new Set<string>(['planet', 'moon', 'asteroid', 'sand', 'ice', 'goo', 'crystal']);
 
 /** Deterministic surface detail so a given planet always looks the same. */
 interface BodyDecor {
@@ -84,6 +90,8 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private pixelRatio = 1;
   private decorCache = new Map<string, BodyDecor>();
+  private painter = new PlanetPainter();
+  private flashState: { color: string; amount: number; start: number | null } | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -130,8 +138,10 @@ export class Renderer {
 
     const view = this.camera.visibleBounds(120);
 
-    if (options.showGravityField) this.drawGravityField(ctx, scene.world, options.palette);
-    this.drawBoundary(ctx, scene.world, options.palette);
+    if (options.showGravityField) {
+      this.drawGravityField(ctx, scene.world, options.palette, scene.time, !options.reducedMotion);
+    }
+    this.drawBoundary(ctx, scene.world, options.palette, scene.time);
     for (const zone of scene.world.zones) {
       this.drawZone(ctx, zone, scene.time, options.palette, scene.world.time);
     }
@@ -156,7 +166,7 @@ export class Renderer {
         }
         continue;
       }
-      this.drawBody(ctx, body, shape, options.palette, scene.world);
+      this.drawBody(ctx, body, shape, options.palette, scene.world, scene.time);
       if (body.pulse) {
         this.drawPulseClock(ctx, shape, pulsePhase(body.pulse, scene.world.time), true);
       }
@@ -201,7 +211,9 @@ export class Renderer {
     ctx.restore();
 
     // Screen space, after the world transform is popped.
-    this.drawOffscreenMarker(ctx, scene, options.palette);
+    this.starfield.drawVignette(ctx, this.width, this.height);
+    if (!options.reducedMotion) this.drawFlash(ctx, scene.time);
+    if (!scene.backdrop) this.drawOffscreenMarker(ctx, scene, options.palette);
   }
 
   /**
@@ -284,70 +296,122 @@ export class Renderer {
   /* ------------------------------------------------------------- gravity */
 
   /**
-   * A coarse grid of short strokes aligned with the local gravity direction.
-   * It makes the invisible field readable at a glance, which is the whole game.
+   * Motes drifting down the local field, over faint guide strokes. Direction
+   * and strength read at a glance — which way space pulls and how hard — and
+   * the motion makes the invisible field feel like a current, which is the
+   * whole game.
    */
-  private drawGravityField(ctx: CanvasRenderingContext2D, world: World, palette: Palette): void {
+  private drawGravityField(
+    ctx: CanvasRenderingContext2D,
+    world: World,
+    palette: Palette,
+    time: number,
+    animate: boolean,
+  ): void {
     const view = this.camera.visibleBounds(0);
     // Keep the on-screen spacing roughly constant as the player zooms.
-    const spacing = 52 / this.camera.zoom;
+    const spacing = 46 / this.camera.zoom;
     const startX = Math.floor(view.minX / spacing) * spacing;
     const startY = Math.floor(view.minY / spacing) * spacing;
+    const len = spacing * 0.42;
+    const unit = 1 / this.camera.zoom;
 
     ctx.save();
     ctx.strokeStyle = palette.fieldLine;
-    ctx.fillStyle = palette.fieldLine;
     ctx.lineCap = 'round';
-    ctx.lineWidth = 1.5 / this.camera.zoom;
-
-    const maxLength = spacing * 0.4;
-    const headRadius = 1.7 / this.camera.zoom;
 
     for (let x = startX; x <= view.maxX + spacing; x += spacing) {
       for (let y = startY; y <= view.maxY + spacing; y += spacing) {
-        const p = { x, y };
-        const g = gravityAt(world, p);
+        // A stable per-cell hash: jitter breaks the grid up so it reads as a
+        // field rather than graph paper, and staggers the motes' phases.
+        const ix = Math.round(x / spacing);
+        const iy = Math.round(y / spacing);
+        const h = Math.sin(ix * 127.1 + iy * 311.7) * 43758.5453;
+        const hash = h - Math.floor(h);
+        const px = x + (hash - 0.5) * spacing * 0.5;
+        const py = y + (((hash * 7.13) % 1) - 0.5) * spacing * 0.5;
+        const g = gravityAt(world, { x: px, y: py });
         const magnitude = Math.hypot(g.x, g.y);
         // Below this the field is not worth the visual noise.
         if (magnitude < 6) continue;
 
         // Log scaling: real fields span orders of magnitude across one screen.
         const strength = clamp(Math.log10(magnitude) / 2.8, 0.1, 1);
-        const len = maxLength * (0.35 + 0.65 * strength);
-        const nx = (g.x / magnitude) * len;
-        const ny = (g.y / magnitude) * len;
+        const dx = g.x / magnitude;
+        const dy = g.y / magnitude;
 
-        // Tail fades in from behind, and a dot marks the pull direction, so a
-        // still frame shows which way space is pulling rather than just where.
-        ctx.globalAlpha = strength * 0.3;
+        ctx.globalAlpha = strength * 0.13;
+        ctx.lineWidth = 1.2 * unit;
         ctx.beginPath();
-        ctx.moveTo(x - nx, y - ny);
-        ctx.lineTo(x + nx * 0.55, y + ny * 0.55);
+        ctx.moveTo(px - dx * len, py - dy * len);
+        ctx.lineTo(px + dx * len, py + dy * len);
         ctx.stroke();
 
-        ctx.globalAlpha = strength * 0.6;
+        // The mote: quicker where the pull is stronger.
+        const phase = animate ? (time * (0.35 + strength * 0.9) + hash) % 1 : 0.7;
+        const head = len * (phase * 2 - 1);
+        const tail = head - len * 0.7;
+        ctx.globalAlpha = strength * 0.7 * Math.sin(phase * Math.PI);
+        ctx.lineWidth = (1.3 + strength * 1.1) * unit;
         ctx.beginPath();
-        ctx.arc(x + nx, y + ny, headRadius * (0.6 + strength * 0.7), 0, TAU);
-        ctx.fill();
+        ctx.moveTo(px + dx * tail, py + dy * tail);
+        ctx.lineTo(px + dx * head, py + dy * head);
+        ctx.stroke();
       }
     }
     ctx.restore();
   }
 
-  private drawBoundary(ctx: CanvasRenderingContext2D, world: World, palette: Palette): void {
+  /**
+   * The edge of play. A soft glowing seam rather than a dashed rectangle: red
+   * and breathing when crossing it loses the ball, cool and still when it is a
+   * wall to bank off.
+   */
+  private drawBoundary(
+    ctx: CanvasRenderingContext2D,
+    world: World,
+    palette: Palette,
+    time: number,
+  ): void {
     if (world.boundsMode === 'open') return;
     const b = world.bounds;
+    const w = b.maxX - b.minX;
+    const h = b.maxY - b.minY;
+    const unit = 1 / this.camera.zoom;
+    const deadly = world.boundsMode !== 'wall';
+    const color = deadly ? palette.danger : palette.accent;
+    const pulse = deadly ? 0.8 + Math.sin(time * 2.2) * 0.2 : 0.7;
+
     ctx.save();
-    ctx.lineWidth = 3 / this.camera.zoom;
-    if (world.boundsMode === 'wall') {
-      ctx.strokeStyle = palette.panelBorder;
-      ctx.setLineDash([]);
-    } else {
-      ctx.strokeStyle = palette.danger;
-      ctx.globalAlpha = 0.45;
-      ctx.setLineDash([14 / this.camera.zoom, 12 / this.camera.zoom]);
+    ctx.strokeStyle = color;
+    ctx.lineJoin = 'round';
+    for (const [width, alpha] of [
+      [18, 0.05],
+      [8, 0.1],
+      [2, 0.5],
+    ] as const) {
+      ctx.globalAlpha = alpha * pulse;
+      ctx.lineWidth = width * unit;
+      ctx.strokeRect(b.minX, b.minY, w, h);
     }
-    ctx.strokeRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+
+    // Corner brackets, so the extent reads even when an edge is off-screen.
+    const arm = Math.min(w, h) * 0.06;
+    ctx.globalAlpha = 0.85 * pulse;
+    ctx.lineWidth = 3 * unit;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const [cx, cy, sx, sy] of [
+      [b.minX, b.minY, 1, 1],
+      [b.maxX, b.minY, -1, 1],
+      [b.minX, b.maxY, 1, -1],
+      [b.maxX, b.maxY, -1, -1],
+    ] as const) {
+      ctx.moveTo(cx + sx * arm, cy);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx, cy + sy * arm);
+    }
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -842,8 +906,10 @@ export class Renderer {
     body: Body,
     shape: Shape,
     palette: Palette,
-    world?: World,
+    world: World,
+    time: number,
   ): void {
+    const style = styleForBody(body.style, body.material);
     const colors = colorsForBody(body.style, body.material);
     const center = shapeCenter(shape);
     const radius = Math.max(shapeRadius(shape), 1);
@@ -858,7 +924,9 @@ export class Renderer {
     const oversized = screenRadius > Math.max(this.width, this.height);
 
     if (colors.glow && !oversized) {
-      const glowRadius = radius * (body.style === 'sun' ? 2.6 : 1.7);
+      // A star breathes; nothing else does.
+      const breathe = style === 'sun' ? 1 + Math.sin(time * 1.7) * 0.05 : 1;
+      const glowRadius = radius * (style === 'sun' ? 2.6 : 1.7) * breathe;
       const grad = ctx.createRadialGradient(center.x, center.y, radius * 0.7, center.x, center.y, glowRadius);
       grad.addColorStop(0, colors.glow);
       grad.addColorStop(1, 'rgba(0,0,0,0)');
@@ -868,39 +936,63 @@ export class Renderer {
       ctx.fill();
     }
 
-    // Body fill: lit from the upper-left so shapes read as solid.
-    if (shape.kind === 'circle' && !oversized) {
-      const grad = ctx.createRadialGradient(
-        center.x - radius * 0.35,
-        center.y - radius * 0.35,
-        radius * 0.1,
-        center.x,
-        center.y,
+    // Ordinary worlds are painted once, properly, and blitted.
+    let painted = false;
+    if (shape.kind === 'circle' && !oversized && PAINTED_STYLES.has(style)) {
+      const sprite = this.painter.sprite(
+        body.id,
+        style,
+        colors,
         radius,
+        this.camera.zoom * this.pixelRatio,
       );
-      grad.addColorStop(0, colors.fill);
-      grad.addColorStop(1, colors.fillDark);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = colors.fill;
+      if (sprite) {
+        ctx.drawImage(
+          sprite.canvas,
+          center.x - sprite.half,
+          center.y - sprite.half,
+          sprite.half * 2,
+          sprite.half * 2,
+        );
+        painted = true;
+      }
     }
 
-    this.tracePath(ctx, shape);
-    ctx.fill();
+    if (!painted) {
+      if (style === 'sun' && shape.kind === 'circle' && !oversized) {
+        this.drawSunSurface(ctx, center, radius, colors, time);
+      } else if (shape.kind === 'circle' && !oversized) {
+        const grad = ctx.createRadialGradient(
+          center.x + LIGHT.x * radius * 0.4,
+          center.y + LIGHT.y * radius * 0.4,
+          radius * 0.1,
+          center.x,
+          center.y,
+          radius,
+        );
+        grad.addColorStop(0, lighten(colors.fill, 0.15));
+        grad.addColorStop(0.6, colors.fill);
+        grad.addColorStop(1, colors.fillDark);
+        ctx.fillStyle = grad;
+        this.tracePath(ctx, shape);
+        ctx.fill();
+      } else if (shape.kind !== 'circle') {
+        this.drawSlab(ctx, shape, colors);
+      } else {
+        ctx.fillStyle = colors.fill;
+        this.tracePath(ctx, shape);
+        ctx.fill();
+      }
+    }
 
-    if (body.style === 'blackhole') {
-      // Accretion ring instead of surface detail.
-      ctx.strokeStyle = colors.rim;
-      ctx.lineWidth = Math.max(1.5, radius * 0.1);
-      ctx.globalAlpha = 0.8;
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, radius * 1.25, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = 0.35;
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, radius * 1.6, 0, TAU);
-      ctx.stroke();
-    } else if (shape.kind === 'circle' && radius > 24 && ROCKY_STYLES.has(body.style ?? 'planet')) {
+    if (style === 'blackhole') {
+      this.drawAccretion(ctx, center, radius, colors, time);
+    } else if (
+      !painted &&
+      shape.kind === 'circle' &&
+      radius > 24 &&
+      ROCKY_STYLES.has(style)
+    ) {
       const decor = this.decorFor(body, radius);
       ctx.save();
       this.tracePath(ctx, shape);
@@ -915,7 +1007,7 @@ export class Renderer {
       ctx.restore();
     }
 
-    if (body.hitsToBreak !== undefined && world) {
+    if (body.hitsToBreak !== undefined) {
       const left = world.breakables[body.id] ?? body.hitsToBreak;
       const damage = 1 - left / body.hitsToBreak;
       if (damage > 0) {
@@ -939,7 +1031,7 @@ export class Renderer {
       }
     }
 
-    if (body.style === 'bumper') {
+    if (style === 'bumper') {
       // Concentric rings read as "springy" without relying on hue.
       ctx.globalAlpha = 0.55;
       ctx.strokeStyle = colors.rim;
@@ -949,13 +1041,30 @@ export class Renderer {
         ctx.arc(center.x, center.y, radius * scale, 0, TAU);
         ctx.stroke();
       }
+      // Glossy, like a pinball bumper cap.
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(
+        center.x + LIGHT.x * radius * 0.42,
+        center.y + LIGHT.y * radius * 0.42,
+        radius * 0.28,
+        radius * 0.13,
+        Math.atan2(LIGHT.y, LIGHT.x) + Math.PI / 2,
+        0,
+        TAU,
+      );
+      ctx.fill();
     }
 
-    ctx.globalAlpha = 1;
+    // The edge the ball actually collides with. Painted worlds carry their own
+    // rim light, so only a whisper of outline to keep the night side legible.
+    ctx.globalAlpha = painted ? 0.28 : style === 'sun' ? 0.6 : 1;
     ctx.strokeStyle = colors.rim;
-    ctx.lineWidth = Math.max(1.2, radius * 0.035);
+    ctx.lineWidth = Math.max(1.2, Math.min(radius * 0.035, 4));
     this.tracePath(ctx, shape);
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
     // A one-way membrane wears arrows pointing the way you may cross it. Without
     // them it is a wall that inexplicably lets the ball through half the time.
@@ -966,11 +1075,139 @@ export class Renderer {
     // washed-out screen alike.
     if (MATERIALS[body.material].deadly) {
       // Clear the black hole's accretion rings, which reach to 1.6x.
-      const inset = body.style === 'blackhole' ? 1.75 : 1.06;
+      const inset = style === 'blackhole' ? 1.75 : 1.06;
       this.drawDangerCorona(ctx, center, radius, palette, inset);
     }
 
     ctx.restore();
+  }
+
+  /**
+   * A star: white-hot core, limb-darkened edge, and slow churning granules.
+   * Drawn live because it moves — a sun that sits still looks like a sticker.
+   */
+  private drawSunSurface(
+    ctx: CanvasRenderingContext2D,
+    c: Vec2,
+    r: number,
+    colors: BodyColors,
+    time: number,
+  ): void {
+    const core = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
+    core.addColorStop(0, '#fffbe8');
+    core.addColorStop(0.35, lighten(colors.fill, 0.35));
+    core.addColorStop(0.8, colors.fill);
+    core.addColorStop(1, colors.fillDark);
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, TAU);
+    ctx.fill();
+
+    if (this.camera.zoom * r < 10) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, TAU);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,220,140,0.16)';
+    for (let i = 0; i < 7; i++) {
+      const a = i * 2.39996 + time * (0.18 + (i % 3) * 0.07);
+      const d = r * (0.25 + ((i * 0.37) % 0.5));
+      const s = r * (0.16 + 0.05 * Math.sin(time * 2.1 + i));
+      ctx.beginPath();
+      ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, s, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * A black hole: a swirling accretion disc and a thin photon ring. The motion
+   * is the warning — it reads as something that takes, not something to land on.
+   */
+  private drawAccretion(
+    ctx: CanvasRenderingContext2D,
+    c: Vec2,
+    r: number,
+    colors: BodyColors,
+    time: number,
+  ): void {
+    ctx.save();
+    ctx.lineCap = 'round';
+    const bands = [
+      { scale: 1.22, width: 0.14, alpha: 0.85, speed: 1.6, dash: 0.9 },
+      { scale: 1.4, width: 0.09, alpha: 0.5, speed: 1.0, dash: 1.4 },
+      { scale: 1.58, width: 0.06, alpha: 0.28, speed: 0.6, dash: 2.0 },
+    ];
+    for (const band of bands) {
+      const rr = r * band.scale;
+      const dash = rr * band.dash;
+      ctx.globalAlpha = band.alpha;
+      ctx.strokeStyle = colors.rim;
+      ctx.lineWidth = Math.max(1.2, r * band.width);
+      ctx.setLineDash([dash, dash * 0.6]);
+      ctx.lineDashOffset = -time * band.speed * rr;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, rr, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // The photon ring: the last light before the edge.
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = '#efe4ff';
+    ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * 1.04, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Walls, beams and slabs: lit across their thickness so they read as solid
+   * bevelled metal rather than flat strips.
+   */
+  private drawSlab(ctx: CanvasRenderingContext2D, shape: Shape, colors: BodyColors): void {
+    let from: Vec2;
+    let to: Vec2;
+    if (shape.kind === 'capsule') {
+      const axis = V.normalize(V.sub(shape.b, shape.a));
+      let n = V.perp(axis);
+      // Face the bright edge toward the light.
+      if (n.x * LIGHT.x + n.y * LIGHT.y < 0) n = V.neg(n);
+      const mid = V.lerpVec(shape.a, shape.b, 0.5);
+      from = V.addScaled(mid, n, shape.radius);
+      to = V.addScaled(mid, n, -shape.radius);
+    } else {
+      const center = shapeCenter(shape);
+      const r = shapeRadius(shape);
+      from = V.addScaled(center, LIGHT, r);
+      to = V.addScaled(center, LIGHT, -r);
+    }
+    const grad = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
+    grad.addColorStop(0, lighten(colors.fill, 0.3));
+    grad.addColorStop(0.3, colors.fill);
+    grad.addColorStop(1, colors.fillDark);
+    ctx.fillStyle = grad;
+    this.tracePath(ctx, shape);
+    ctx.fill();
+
+    // A bright line just inside the lit edge: the bevel.
+    if (shape.kind === 'capsule' && shape.radius * this.camera.zoom > 3) {
+      const axis = V.normalize(V.sub(shape.b, shape.a));
+      let n = V.perp(axis);
+      if (n.x * LIGHT.x + n.y * LIGHT.y < 0) n = V.neg(n);
+      const inset = shape.radius * 0.55;
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(0.8, shape.radius * 0.14);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(shape.a.x + n.x * inset, shape.a.y + n.y * inset);
+      ctx.lineTo(shape.b.x + n.x * inset, shape.b.y + n.y * inset);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /** Chevrons along a membrane, pointing the direction the ball may cross. */
@@ -1314,16 +1551,28 @@ export class Renderer {
   ): void {
     if (trail.length < 2) return;
     ctx.save();
-    ctx.strokeStyle = color;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    // Additive, so overlapping loops brighten like a long exposure.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = color;
     for (let i = 1; i < trail.length; i++) {
       const t = i / trail.length;
-      ctx.globalAlpha = t * 0.5;
-      ctx.lineWidth = ballRadius * 1.4 * t;
+      const a = trail[i - 1]!;
+      const b = trail[i]!;
+      // A wide soft glow...
+      ctx.globalAlpha = t * t * 0.22;
+      ctx.lineWidth = ballRadius * 2.6 * t;
       ctx.beginPath();
-      ctx.moveTo(trail[i - 1]!.x, trail[i - 1]!.y);
-      ctx.lineTo(trail[i]!.x, trail[i]!.y);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      // ...around a hot thin core.
+      ctx.globalAlpha = t * 0.55;
+      ctx.lineWidth = ballRadius * 0.7 * t;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
       ctx.stroke();
     }
     ctx.restore();
@@ -1336,42 +1585,44 @@ export class Renderer {
     time: number,
     skin: BallSkin,
   ): void {
+    const { x, y } = position;
     ctx.save();
-    const glow = ctx.createRadialGradient(
-      position.x,
-      position.y,
-      radius * 0.5,
-      position.x,
-      position.y,
-      radius * 3.4,
-    );
+    const glow = ctx.createRadialGradient(x, y, radius * 0.5, x, y, radius * 3.6);
     glow.addColorStop(0, skin.glow);
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(position.x, position.y, radius * 3.4, 0, TAU);
+    ctx.arc(x, y, radius * 3.6, 0, TAU);
     ctx.fill();
 
+    // Lit from the same star as every planet, so the ball sits in the scene.
     const grad = ctx.createRadialGradient(
-      position.x - radius * 0.35,
-      position.y - radius * 0.4,
-      radius * 0.1,
-      position.x,
-      position.y,
-      radius,
+      x + LIGHT.x * radius * 0.4,
+      y + LIGHT.y * radius * 0.4,
+      radius * 0.05,
+      x,
+      y,
+      radius * 1.05,
     );
     grad.addColorStop(0, skin.highlight);
-    grad.addColorStop(1, skin.body);
+    grad.addColorStop(0.6, skin.body);
+    grad.addColorStop(1, 'rgba(10,14,30,1)');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(position.x, position.y, radius, 0, TAU);
+    ctx.arc(x, y, radius, 0, TAU);
     ctx.fill();
 
-    ctx.globalAlpha = 0.55 + Math.sin(time * 4) * 0.12;
-    ctx.strokeStyle = skin.glow;
-    ctx.lineWidth = 1;
+    // A hard specular pin: the thing that makes a ball look polished.
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
-    ctx.arc(position.x, position.y, radius + 1.5, 0, TAU);
+    ctx.arc(x + LIGHT.x * radius * 0.45, y + LIGHT.y * radius * 0.45, radius * 0.2, 0, TAU);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.5 + Math.sin(time * 4) * 0.15;
+    ctx.strokeStyle = skin.glow;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 1.8, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }
@@ -1504,8 +1755,34 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * A brief full-screen wash of colour, for the moments that deserve one.
+   * Timed on the scene clock, so a paused game holds it rather than skipping.
+   */
+  flash(color: string, amount = 0.35): void {
+    this.flashState = { color, amount, start: null };
+  }
+
+  private drawFlash(ctx: CanvasRenderingContext2D, time: number): void {
+    const flash = this.flashState;
+    if (!flash) return;
+    if (flash.start === null || time < flash.start) flash.start = time;
+    const alpha = flash.amount * Math.exp(-(time - flash.start) * 4.5);
+    if (alpha < 0.01) {
+      this.flashState = null;
+      return;
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = flash.color;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.restore();
+  }
+
   /** Clears cached per-body decoration. Call when switching levels. */
   resetDecor(): void {
     this.decorCache.clear();
+    this.painter.clear();
   }
 }

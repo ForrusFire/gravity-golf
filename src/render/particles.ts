@@ -143,6 +143,8 @@ export class ParticleSystem {
   /** Draws every live particle. The context must already be in world space. */
   draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
+    // Additive: sparks are light, and overlapping light should brighten.
+    ctx.globalCompositeOperation = 'lighter';
     for (const p of this.particles) {
       if (p.life <= 0) continue;
       const t = p.life / p.maxLife;
@@ -171,7 +173,9 @@ export class ParticleSystem {
           break;
         }
         case 'ring': {
-          const r = p.size * (1.6 - t);
+          // Ease out: a shockwave leaves fast and slows as it spreads.
+          const age = 1 - t;
+          const r = p.size * (0.4 + 1.4 * (1 - (1 - age) * (1 - age)));
           ctx.lineWidth = Math.max(0.4, p.size * 0.28 * t);
           ctx.beginPath();
           ctx.arc(p.x, p.y, Math.max(0.2, r), 0, TAU);
@@ -209,6 +213,19 @@ export class ParticleSystem {
       shape: 'spark',
       drag: 2.2,
     });
+    // A hard hit leaves a ripple where it landed.
+    if (strength > 0.35) {
+      this.emit(position, {
+        count: 1,
+        color,
+        speed: 0,
+        life: 0.35,
+        size: 8 + 10 * strength,
+        shape: 'ring',
+        drag: 0,
+        sizeVariance: 0,
+      });
+    }
   }
 
   trailPuff(position: Vec2, velocity: Vec2, color: string): void {
@@ -248,6 +265,18 @@ export class ParticleSystem {
       drag: 1.6,
     });
     this.emit(position, { count: 3, color, speed: 0, life: 0.9, size: 22, shape: 'ring', drag: 0 });
+    // A slow, wide wave last, so the moment lingers.
+    this.emit(position, {
+      count: 1,
+      color: '#ffffff',
+      speed: 0,
+      life: 1.3,
+      size: 70,
+      shape: 'ring',
+      drag: 0,
+      sizeVariance: 0,
+    });
+    this.emit(position, { count: 24, color: '#fff6c8', speed: 90, life: 1.6, size: 1.8, drag: 0.8 });
   }
 
   explosion(position: Vec2, color: string): void {
@@ -268,6 +297,16 @@ export class ParticleSystem {
       size: 5,
       shape: 'dot',
       drag: 1.1,
+    });
+    this.emit(position, {
+      count: 1,
+      color,
+      speed: 0,
+      life: 0.7,
+      size: 48,
+      shape: 'ring',
+      drag: 0,
+      sizeVariance: 0,
     });
   }
 }

@@ -615,21 +615,26 @@ const checkBoosters = (
  * flips, but only once per pass, so sitting inside one does not strobe the
  * course between states.
  */
-const checkSwitches = (
-  world: World,
-  ball: Ball,
-  runtime: BallRuntime,
-  events: SimEvent[],
-): void => {
+/** Springs back any held switch whose time is up, whether or not the ball is near. */
+export const releaseExpiredSwitches = (world: World, events: SimEvent[]): void => {
   for (const pad of world.switches) {
-    // A held switch springs back on its own, whether or not the ball is near it.
     if (pad.on && pad.offAt !== undefined && world.time >= pad.offAt) {
       pad.on = false;
       pad.offAt = undefined;
       world.revision = (world.revision ?? 0) + 1;
       events.push({ type: 'switch', id: pad.id, position: pad.position, on: false });
     }
+  }
+};
 
+const checkSwitches = (
+  world: World,
+  ball: Ball,
+  runtime: BallRuntime,
+  events: SimEvent[],
+): void => {
+  releaseExpiredSwitches(world, events);
+  for (const pad of world.switches) {
     const reach = pad.radius + ball.radius;
     const inside = V.distanceSq(ball.position, pad.position) <= reach * reach;
     const wasInside = runtime.insideSwitches.has(pad.id);
@@ -909,6 +914,46 @@ export const stepWorld = (
       if (restSpeed > cfg.restSpeed * 1.5) ball.atRest = false;
     }
   }
+};
+
+/**
+ * Advances the world by one step while the ball sits waiting to be struck.
+ *
+ * A ball at rest stays put until it is hit — the golf rule, and the solver's
+ * assumption, since it launches every shot from the exact resting spot. Before
+ * this, a waiting ball was still integrated, so on a tee floating in open space
+ * or a ledge the field pulled at sideways, it crept off while the player aimed,
+ * passed rest speed, and locked them out of shooting until it found somewhere
+ * else to stop. Nine holes were affected; one locked within a tenth of a second.
+ *
+ * The hold is kinematic rather than frozen: a ball resting on something that
+ * moves is carried with it, so a lift still lifts. Anything else — a static
+ * surface, or nothing at all — leaves the ball exactly where it is.
+ */
+export const holdBall = (
+  world: World,
+  ball: Ball,
+  events: SimEvent[],
+): void => {
+  const t = world.time;
+  const step = world.config.timeStep;
+  const support = findDeepestContact(world, ball, t, CONTACT_SKIN * 2);
+  const body = support?.body;
+
+  world.time = t + step;
+  releaseExpiredSwitches(world, events);
+
+  if (body?.motion) {
+    // Carry the ball with the surface under it, then glue it back onto that
+    // surface so rounding never lets it drift free over a long aim.
+    const carry = bodyVelocityAt(body, t, support!.query.point);
+    ball.position = V.addScaled(ball.position, carry, step);
+    const surface = closestSurfacePoint(bodyShapeAt(body, world.time), ball.position);
+    ball.position = V.addScaled(surface.point, surface.normal, ball.radius);
+  }
+
+  ball.velocity = V.ZERO;
+  ball.atRest = true;
 };
 
 /** Launches the ball, clearing per-shot runtime stats. */

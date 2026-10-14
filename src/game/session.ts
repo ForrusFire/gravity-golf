@@ -12,6 +12,7 @@ import type { Ball } from '../physics/types';
 import {
   createBall,
   createBallRuntime,
+  holdBall,
   launchBall,
   stepWorld,
   type BallRuntime,
@@ -417,11 +418,33 @@ export class PlaySession {
     while (this.accumulator >= step && budget-- > 0) {
       this.accumulator -= step;
       this.simEvents.length = 0;
+
+      if (this.state === 'aiming') {
+        // A waiting ball stays where it lies; only the world's clock moves on,
+        // at full speed, so a moving cup or a pulsing wall keeps the tempo the
+        // player will actually face when they fire.
+        holdBall(this.world, this.ball, this.simEvents);
+        this.drainSimEvents(events);
+        continue;
+      }
+
       stepWorld(this.world, this.ball, this.runtime, this.simEvents);
       this.trackStyle();
       this.drainSimEvents(events);
-      if (this.state !== 'flying') break;
+
+      if (this.state !== 'flying') {
+        // The ball has just come to rest, sunk or died. Drop the rest of this
+        // frame rather than spending it on holding the ball: the next shot must
+        // start at exactly the instant the last one ended, which is what the
+        // solver assumes and what makes its solutions replay.
+        this.accumulator = 0;
+        break;
+      }
     }
+
+    // Never carry more than one step of debt into the next frame. A slow frame
+    // becomes a brief slow-motion rather than a fast-forward burst afterwards.
+    this.accumulator = Math.min(this.accumulator, step);
 
     if (this.state === 'flying' && this.shotTimer >= levelShotTimeout(this.level)) {
       events.push({ type: 'timeout', strokes: this.strokes });

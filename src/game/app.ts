@@ -47,6 +47,7 @@ import {
 import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
 import { FEATS, PlaySession, type HoleResult, type SessionEvent } from './session';
+import { createShowcase, type Showcase } from './showcase';
 import { resolveSkin } from './skins';
 
 type AppScreen =
@@ -113,6 +114,7 @@ export class GameApp {
   private disposed = false;
 
   private ghost: GhostRunner | null = null;
+  private showcase: Showcase | null = null;
   /** Eased 0..1; 1 is full speed. Drives the approach slow-motion. */
   private timeScale = 1;
   /** Counts down at level start while the camera shows the hole. */
@@ -476,6 +478,17 @@ export class GameApp {
             spread: 0.9,
             shape: 'spark',
           });
+          particles.emit(session.ball.position, {
+            count: 1,
+            color: palette.accent,
+            speed: 0,
+            life: 0.3,
+            size: 10 + 14 * event.power,
+            shape: 'ring',
+            drag: 0,
+            sizeVariance: 0,
+          });
+          if (shakeAllowed && event.power > 0.75) camera.shake(1.5 * event.power, 0.12);
           break;
 
         case 'bounce':
@@ -546,6 +559,7 @@ export class GameApp {
           this.progress.countDeath();
           particles.explosion(event.position, palette.danger);
           if (shakeAllowed) camera.shake(9, 0.45);
+          this.renderer.flash(palette.danger, 0.16);
           this.trail = [];
           const reason =
             event.cause === 'out-of-bounds' ? 'Lost in deep space' : 'Ball destroyed';
@@ -566,6 +580,7 @@ export class GameApp {
           this.audio.play('sink');
           particles.sinkCelebration(holePositionAt(session.world), palette.holeRim);
           if (shakeAllowed) camera.shake(4, 0.3);
+          this.renderer.flash(palette.holeRim, 0.22);
           const feat = event.result.feats[0];
           if (feat) this.hud.showToast(FEATS[feat].label, 2.4, 'good');
           this.finishHole();
@@ -928,7 +943,7 @@ export class GameApp {
         CAMPAIGN_IDS,
         this.progress.isCompleted(dailyId(new Date())),
       ),
-      {},
+      { showcase: true },
     );
   }
 
@@ -1203,17 +1218,28 @@ export class GameApp {
     };
 
     if (!session) {
-      // Menus still get a live starfield behind them.
+      // Menus sit over a little living system rather than a blank sky.
+      const showcase = (this.showcase ??= createShowcase());
+      const t = options.reducedMotion ? 3 : performance.now() / 1000;
+      showcase.world.time = t;
+      const camera = this.renderer.camera;
+      const zoom = Math.min(camera.viewportWidth / 1500, camera.viewportHeight / 960, 1.2);
+      const z = Math.max(zoom, 0.3);
+      // On a wide screen the menu sits left and the system plays out beside it.
+      const shift = this.screen === 'title' && camera.viewportWidth > 900 ? camera.viewportWidth * 0.2 : 0;
+      const eye = showcase.eyeAt(t);
+      camera.snapTo({ x: eye.x - shift / z, y: eye.y }, z);
       this.renderer.draw(
         {
-          world: EMPTY_SCENE_WORLD,
-          ballPosition: V.ZERO,
+          world: showcase.world,
+          ballPosition: showcase.ballAt(t),
           ballRadius: BALL_RADIUS,
-          ballVisible: false,
-          trail: [],
+          ballVisible: true,
+          trail: options.reducedMotion ? [] : showcase.trailAt(t),
           aim: null,
-          time: performance.now() / 1000,
-          levelId: '',
+          time: t,
+          levelId: 'showcase',
+          backdrop: true,
           skin: resolveSkin(this.progress.settings.ballSkin, this.progress.totalStars(CAMPAIGN_IDS)),
           ghost: null,
           hintPath: null,
@@ -1244,27 +1270,3 @@ export class GameApp {
   }
 }
 
-/** A minimal world so menu backgrounds can reuse the same draw path. */
-const EMPTY_SCENE_WORLD = {
-  bodies: [],
-  zones: [],
-  portals: [],
-  collectibles: [],
-  switches: [],
-  boosters: [],
-  breakables: {},
-  hole: { position: { x: 0, y: -100000 }, radius: 1, captureSpeed: 1 },
-  bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
-  boundsMode: 'open' as const,
-  uniformGravity: { x: 0, y: 0 },
-  config: {
-    timeStep: 1 / 240,
-    ambientDrag: 0,
-    restSpeed: 1,
-    restDelay: 1,
-    maxSpeed: 1,
-    contactSlop: 0,
-    gravitySoftening: 1,
-  },
-  time: 0,
-};

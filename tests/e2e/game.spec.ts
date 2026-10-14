@@ -174,6 +174,10 @@ test.describe('playing a hole', () => {
       const s = app.session!;
       const hole = s.world.hole;
       s.ball.position = { x: hole.position.x, y: hole.position.y - hole.radius * 0.4 };
+      // A ball waiting to be struck is held still, so set it moving for the
+      // simulation to see it drop.
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
     });
 
     await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
@@ -306,6 +310,10 @@ test.describe('menus', () => {
         x: s.world.hole.position.x,
         y: s.world.hole.position.y - s.world.hole.radius * 0.4,
       };
+      // A ball waiting to be struck is held still, so set it moving for the
+      // simulation to see it drop.
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
     });
     await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
 
@@ -501,6 +509,10 @@ test.describe('playing a round', () => {
         x: s.world.hole.position.x - unit.x * s.world.hole.radius * 0.4,
         y: s.world.hole.position.y - unit.y * s.world.hole.radius * 0.4,
       };
+      // A ball waiting to be struck is held still, so set it moving for the
+      // simulation to see it drop.
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
       s.ball.velocity = { x: unit.x * 30, y: unit.y * 30 };
       s.ball.atRest = false;
     });
@@ -636,6 +648,10 @@ test.describe('finishing the campaign', () => {
         x: s.world.hole.position.x,
         y: s.world.hole.position.y - s.world.hole.radius * 0.4,
       };
+      // A ball waiting to be struck is held still, so set it moving for the
+      // simulation to see it drop.
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
     });
   };
 
@@ -785,6 +801,10 @@ test.describe('hints', () => {
         x: s.world.hole.position.x,
         y: s.world.hole.position.y - s.world.hole.radius * 0.4,
       };
+      // A ball waiting to be struck is held still, so set it moving for the
+      // simulation to see it drop.
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
     });
 
     await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });

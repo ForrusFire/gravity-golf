@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as V from '../../src/core/vec2';
 import { BALL_RADIUS, type LevelDef } from '../../src/game/level';
 import { PlaySession, medalFor, settledTee, type SessionEvent } from '../../src/game/session';
+import { ALL_LEVELS } from '../../src/game/levels';
 
 const baseLevel: LevelDef = {
   id: 'test-1',
@@ -43,8 +44,12 @@ describe('medalFor', () => {
 });
 
 describe('zero-stroke finishes', () => {
-  it('scores a ball that rolls in unaided as one stroke, not zero', () => {
-    // A tee perched right above the cup: the ball reaches it without a shot.
+  it('never lets a waiting ball roll into the cup unaided', () => {
+    // A tee perched right above the cup. This used to score a free hole — the
+    // ball dropped in while the player was still aiming, and only a one-stroke
+    // floor kept it from reading as better than an ace. A waiting ball now
+    // stays where it lies, so the finish has to be played.
+    // (The floor itself is still covered by medalFor's zero-stroke case.)
     const level: LevelDef = {
       ...baseLevel,
       tee: V.vec(0, -60),
@@ -61,10 +66,9 @@ describe('zero-stroke finishes', () => {
     const session = new PlaySession(level);
     run(session, 4);
 
-    expect(session.result).not.toBeNull();
-    expect(session.result!.strokes).toBe(1);
-    expect(session.result!.medal).toBe('ace');
-    expect(session.strokes).toBe(1);
+    expect(session.result).toBeNull();
+    expect(session.strokes).toBe(0);
+    expect(session.canShoot).toBe(true);
   });
 });
 
@@ -312,5 +316,83 @@ describe('PlaySession', () => {
     session.update(30);
     // The frame is clamped, so one stall cannot skip the ball across the hole.
     expect(session.world.time - before).toBeLessThan(0.2);
+  });
+});
+
+describe('a ball waiting to be struck', () => {
+  it('stays exactly where it lies on every hole, however long the aim', () => {
+    // A human takes seconds to line up a shot. Before the hold, nine holes let
+    // the field drag the waiting ball off its tee — and once it passed rest
+    // speed the player was locked out of shooting until it stopped somewhere
+    // else. Every other test fired on the first frame and never noticed.
+    const drifted: string[] = [];
+    for (const level of ALL_LEVELS) {
+      const session = new PlaySession(level);
+      const start = session.ball.position;
+      for (let i = 0; i < 600; i++) {
+        session.update(1 / 60);
+        if (!session.canShoot) break;
+      }
+      const moved = V.distance(start, session.ball.position);
+      if (!session.canShoot || moved > 0.5) {
+        drifted.push(`${level.id} canShoot=${session.canShoot} moved=${moved.toFixed(1)}`);
+      }
+    }
+    expect(drifted).toEqual([]);
+  });
+
+  it('does not fast-forward the next shot after a long aim', () => {
+    // The aiming loop used to take one physics step per frame while banking
+    // the rest, then spend the backlog on the shot: aim for ten seconds and the
+    // first half-second of flight covered three seconds of simulation.
+    const elapsedAfter = (aimSeconds: number): number => {
+      const session = new PlaySession(ALL_LEVELS[0]!);
+      for (let i = 0; i < aimSeconds * 60; i++) session.update(1 / 60);
+      const before = session.world.time;
+      session.shoot(V.vec(1, -0.3), 0.6);
+      for (let i = 0; i < 30; i++) session.update(1 / 60);
+      return session.world.time - before;
+    };
+    expect(elapsedAfter(10)).toBeCloseTo(elapsedAfter(0), 2);
+    expect(elapsedAfter(10)).toBeCloseTo(0.5, 2);
+  });
+
+  it('keeps the world clock at full speed while aiming', () => {
+    // The same loop ran moving cups and pulsing walls at a quarter of their
+    // real tempo while the player was reading them, then at full speed once
+    // they fired — so every timing puzzle showed the wrong rhythm.
+    const session = new PlaySession(ALL_LEVELS[0]!);
+    for (let i = 0; i < 120; i++) session.update(1 / 60);
+    expect(session.world.time).toBeCloseTo(2, 2);
+  });
+
+  it('is carried by a moving platform it rests on', () => {
+    // The hold is kinematic, not a freeze: a ball on a lift still rides it.
+    const level: LevelDef = {
+      id: 'lift-test',
+      name: 'Lift',
+      chapter: 0,
+      par: 3,
+      tee: V.vec(0, 270),
+      hole: { position: V.vec(500, -300) },
+      bounds: { minX: -600, minY: -500, maxX: 600, maxY: 500 },
+      boundsMode: 'open',
+      uniformGravity: V.vec(0, 300),
+      bodies: [
+        {
+          id: 'lift',
+          shape: { kind: 'circle', center: V.vec(0, 300), radius: 20 },
+          material: 'metal',
+          motion: { kind: 'oscillate', from: V.vec(0, 300), to: V.vec(0, 0), period: 6, phase: 0 },
+        },
+      ],
+      stars: [],
+    };
+    const session = new PlaySession(level);
+    const start = session.ball.position.y;
+    for (let i = 0; i < 90; i++) session.update(1 / 60);
+    expect(session.canShoot).toBe(true);
+    // Rising with the platform, not left hanging where it started.
+    expect(session.ball.position.y).toBeLessThan(start - 50);
   });
 });

@@ -111,6 +111,9 @@ const MATERIAL_FALLBACK: Record<MaterialId, BodyStyle> = {
   void: 'blackhole',
 };
 
+export const styleForBody = (style: BodyStyle | undefined, material: MaterialId): BodyStyle =>
+  style ?? MATERIAL_FALLBACK[material];
+
 export const colorsForBody = (style: BodyStyle | undefined, material: MaterialId): BodyColors =>
   BODY_COLORS[style ?? MATERIAL_FALLBACK[material]];
 
