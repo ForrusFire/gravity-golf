@@ -124,6 +124,7 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
+    this.painter.pump(2);
 
     this.starfield.draw(
       ctx,
@@ -1060,7 +1061,7 @@ export class Renderer {
       }
     }
 
-    if (style === 'bumper') {
+    if (style === 'bumper' && shape.kind === 'circle') {
       // Concentric rings read as "springy" without relying on hue.
       ctx.globalAlpha = 0.55;
       ctx.strokeStyle = colors.rim;
@@ -1870,6 +1871,22 @@ export class Renderer {
     ctx.fillStyle = flash.color;
     ctx.fillRect(0, 0, this.width, this.height);
     ctx.restore();
+  }
+
+  /**
+   * Paints every body's sprite at the given zoom now, so the first frames of
+   * a hole — and its intro flyby — never wait on a paint.
+   */
+  prewarm(world: World, zoom: number): void {
+    for (const body of world.bodies) {
+      const shape = body.shape;
+      if (shape.kind !== 'circle') continue;
+      const style = styleForBody(body.style, body.material);
+      if (!PAINTED_STYLES.has(style)) continue;
+      if (shape.radius * zoom > Math.max(this.width, this.height)) continue;
+      const colors = colorsForBody(body.style, body.material);
+      this.painter.sprite(body.id, style, colors, shape.radius, zoom * this.pixelRatio, true);
+    }
   }
 
   /** Clears cached per-body decoration. Call when switching levels. */

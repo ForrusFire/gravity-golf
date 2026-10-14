@@ -651,11 +651,14 @@ export class GameApp {
 
     const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
     this.flybyTimer = flyby;
+    this.renderer.prewarm(this.session.world, this.baseZoom);
     if (flyby > 0) {
       const bounds = this.session.world.bounds;
+      const overview = this.renderer.camera.fit(bounds, 40, 1.4);
+      this.renderer.prewarm(this.session.world, overview);
       this.renderer.camera.snapTo(
         { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 },
-        this.renderer.camera.fit(bounds, 40, 1.4),
+        overview,
       );
     } else {
       this.renderer.camera.snapTo(this.session.ball.position, this.baseZoom);

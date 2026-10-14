@@ -2,6 +2,7 @@ import { TAU } from '../core/math';
 import { Rng, hashSeed } from '../core/rng';
 import type { BodyStyle } from '../physics/types';
 import type { BodyColors } from './palette';
+import type { PaintRequest, PaintResponse } from '../workers/paint.worker';
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -24,7 +25,7 @@ const createCanvas = (size: number): AnyCanvas | null => {
 };
 
 export interface PlanetSprite {
-  canvas: AnyCanvas;
+  canvas: AnyCanvas | ImageBitmap;
   /** World units from the sprite's edge to the body's centre. */
   half: number;
 }
@@ -39,46 +40,155 @@ export interface PlanetSprite {
  * zoom does not repaint every frame, and evicted when the level changes.
  */
 export class PlanetPainter {
-  private cache = new Map<string, PlanetSprite | null>();
+  /** Per body, its sprites by resolution bucket. */
+  private cache = new Map<string, Map<number, PlanetSprite | null>>();
+  /** Better-resolution repaints waiting for spare frame time. */
+  private queue = new Map<string, () => void>();
+  /** Big paints in flight on the worker, by queue key. */
+  private inFlight = new Map<string, { entry: Map<number, PlanetSprite | null>; bucket: number }>();
+  private worker: Worker | null | undefined;
 
   clear(): void {
     this.cache.clear();
+    this.queue.clear();
+    // Anything still painting for the old hole is dropped when it arrives.
+    this.inFlight.clear();
   }
 
+  private paintWorker(): Worker | null {
+    if (this.worker !== undefined) return this.worker;
+    this.worker = null;
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
+    try {
+      const worker = new Worker(new URL('../workers/paint.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+      worker.onmessage = (event: MessageEvent<PaintResponse>) => {
+        const { key, bitmap, half } = event.data;
+        const job = this.inFlight.get(key);
+        if (!job) {
+          bitmap?.close();
+          return;
+        }
+        this.inFlight.delete(key);
+        job.entry.set(job.bucket, bitmap ? { canvas: bitmap, half } : null);
+        trim(job.entry);
+      };
+      worker.onerror = () => {
+        // Fall back to painting here; nothing in flight will ever come back.
+        this.worker = null;
+        this.inFlight.clear();
+      };
+      this.worker = worker;
+    } catch {
+      this.worker = null;
+    }
+    return this.worker;
+  }
+
+  /** Repaints held back from earlier frames, until `budgetMs` is spent. */
+  pump(budgetMs = 2): void {
+    if (this.queue.size === 0) return;
+    const start = performance.now();
+    for (const [key, paint] of this.queue) {
+      this.queue.delete(key);
+      paint();
+      if (performance.now() - start > budgetMs) break;
+    }
+  }
+
+  /**
+   * The sprite for a body at roughly this resolution. When the exact bucket is
+   * not painted yet but another is, that one is returned scaled and the new
+   * one is queued — so a zoom never stalls a frame on a fresh paint.
+   * `immediate` paints synchronously regardless, for warming up on load.
+   */
   sprite(
     id: string,
     style: BodyStyle,
     colors: BodyColors,
     radius: number,
     pixelsPerUnit: number,
+    immediate = false,
   ): PlanetSprite | null {
     // Bucket the resolution in steps of ~19% so zooming reuses bitmaps.
     const bucket = Math.pow(1.19, Math.round(Math.log(Math.max(pixelsPerUnit, 0.05)) / Math.log(1.19)));
-    const key = `${id}|${style}|${radius}|${bucket.toFixed(3)}|${colors.fill}`;
-    if (this.cache.has(key)) return this.cache.get(key) ?? null;
-
-    const half = radius * (1 + HALO);
-    const size = Math.ceil(half * 2 * bucket);
-    // Past this a sprite costs more memory than it saves; draw those live.
-    if (size > 2048 || size < 4) {
-      this.cache.set(key, null);
-      return null;
+    const baseKey = `${id}|${style}|${radius}|${colors.fill}`;
+    let entry = this.cache.get(baseKey);
+    if (!entry) {
+      entry = new Map();
+      this.cache.set(baseKey, entry);
     }
-    const canvas = createCanvas(size);
-    const ctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
-    if (!canvas || !ctx) {
-      this.cache.set(key, null);
-      return null;
-    }
+    if (entry.has(bucket)) return entry.get(bucket) ?? null;
 
-    ctx.scale(bucket, bucket);
-    ctx.translate(half, half);
-    paintBody(ctx, style, colors, radius, hashSeed(id));
-    const sprite = { canvas, half };
-    this.cache.set(key, sprite);
-    return sprite;
+    const paintNow = (): PlanetSprite | null => {
+      const sprite = paintSprite(id, style, colors, radius, bucket);
+      entry.set(bucket, sprite);
+      trim(entry);
+      return sprite;
+    };
+    const queueKey = `${baseKey}|${bucket}`;
+
+    let nearest: PlanetSprite | null = null;
+    let nearestGap = Infinity;
+    for (const [b, sprite] of entry) {
+      if (!sprite) continue;
+      const gap = Math.abs(Math.log(b / bucket));
+      if (gap < nearestGap) {
+        nearestGap = gap;
+        nearest = sprite;
+      }
+    }
+    // A big sprite goes to the worker; until it is back the caller gets the
+    // nearest resolution there is, or nothing and draws the body live.
+    const pixels = Math.ceil(radius * (1 + HALO) * 2 * bucket);
+    const worker = pixels > BIG_SPRITE ? this.paintWorker() : null;
+    if (worker) {
+      if (!this.inFlight.has(queueKey)) {
+        this.inFlight.set(queueKey, { entry, bucket });
+        const request: PaintRequest = { key: queueKey, id, style, colors, radius, bucket };
+        worker.postMessage(request);
+      }
+      return nearest;
+    }
+    if (immediate || !nearest) return paintNow();
+    if (!this.queue.has(queueKey)) this.queue.set(queueKey, () => void paintNow());
+    return nearest;
   }
 }
+
+export const paintSprite = (
+  id: string,
+  style: BodyStyle,
+  colors: BodyColors,
+  radius: number,
+  bucket: number,
+): PlanetSprite | null => {
+  const half = radius * (1 + HALO);
+  const size = Math.ceil(half * 2 * bucket);
+  // Past this a sprite costs more memory than it saves; draw those live.
+  if (size > 2048 || size < 4) return null;
+  const canvas = createCanvas(size);
+  const ctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
+  if (!canvas || !ctx) return null;
+  ctx.scale(bucket, bucket);
+  ctx.translate(half, half);
+  paintBody(ctx, style, colors, radius, hashSeed(id));
+  return { canvas, half };
+};
+
+/** Sprites wider than this many pixels are painted on the worker. */
+const BIG_SPRITE = 520;
+
+/** Keep a few resolutions per body; the rest are memory for nothing. */
+const trim = (entry: Map<number, PlanetSprite | null>): void => {
+  while (entry.size > 3) {
+    const oldest = entry.keys().next().value as number;
+    const sprite = entry.get(oldest);
+    if (sprite && 'close' in sprite.canvas) sprite.canvas.close();
+    entry.delete(oldest);
+  }
+};
 
 /** Paints a body centred on the origin. */
 const paintBody = (
