@@ -127,7 +127,13 @@ body.loading::after {
   border-color: rgba(255, 110, 130, 0.45);
 }
 
+.btn--icon .icon {
+  display: block;
+}
+
 .btn--icon {
+  display: inline-grid;
+  place-items: center;
   padding: 0.5rem 0.72rem;
   font-size: 1rem;
   line-height: 1;

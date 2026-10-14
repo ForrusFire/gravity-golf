@@ -1,6 +1,7 @@
 import { clamp } from '../core/math';
 import type { LevelDef } from '../game/level';
 import type { PlaySession } from '../game/session';
+import { icon, type IconName } from './icons';
 import { button, clear, el, formatToPar } from './dom';
 
 export interface HudCallbacks {
@@ -67,17 +68,17 @@ export class Hud {
       this.introPar,
     ]);
 
-    this.undoButton = button('↶', callbacks.onUndo, {
+    this.undoButton = withIcon('undo', button('', callbacks.onUndo, {
       class: 'btn--icon',
       title: 'Take back last shot (Z)',
       attrs: { 'aria-label': 'Take back last shot' },
-    });
+    }));
 
-    this.hintButton = button('💡', callbacks.onHint, {
+    this.hintButton = withIcon('hint', button('', callbacks.onHint, {
       class: 'btn--icon',
       title: 'Show a line (H)',
       attrs: { 'aria-label': 'Show a suggested line' },
-    });
+    }));
 
     this.root = el('div', { class: 'hud' }, [
       el('div', { class: 'hud__top' }, [
@@ -96,21 +97,21 @@ export class Hud {
         el('div', { class: 'hud__actions' }, [
           this.hintButton,
           this.undoButton,
-          button('↺', callbacks.onRetry, {
+          withIcon('restart', button('', callbacks.onRetry, {
             class: 'btn--icon',
             title: 'Restart hole (R)',
             attrs: { 'aria-label': 'Restart hole' },
-          }),
-          button('⊞', callbacks.onToggleField, {
+          })),
+          withIcon('field', button('', callbacks.onToggleField, {
             class: 'btn--icon',
             title: 'Toggle gravity field (G)',
             attrs: { 'aria-label': 'Toggle gravity field overlay' },
-          }),
-          button('❚❚', callbacks.onPause, {
+          })),
+          withIcon('pause', button('', callbacks.onPause, {
             class: 'btn--icon',
             title: 'Pause (Esc)',
             attrs: { 'aria-label': 'Pause' },
-          }),
+          })),
         ]),
       ]),
       this.clockWrap,
@@ -220,4 +221,10 @@ const bump = (node: HTMLElement): void => {
   node.classList.remove('is-bumped');
   void node.offsetWidth;
   node.classList.add('is-bumped');
+};
+
+/** Puts an icon in a button that is labelled for assistive tech elsewhere. */
+const withIcon = (name: IconName, node: HTMLButtonElement): HTMLButtonElement => {
+  node.append(icon(name));
+  return node;
 };
