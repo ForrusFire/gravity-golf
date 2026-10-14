@@ -402,9 +402,13 @@ export class GameApp {
     if (session.state !== 'flying') {
       // While aiming, lean the view toward the hole so the player can see where
       // they are shooting. Capped by the viewport so the ball never slides off.
-      const lead = V.sub(holePositionAt(session.world), focus);
-      const maxLead = (camera.viewportWidth / Math.max(camera.zoom, 0.01)) * 0.22;
-      focus = V.add(focus, V.clampLength(V.mul(lead, 0.35), maxLead));
+      // Each axis is capped by its own side of the screen: on a phone in
+      // portrait there is far more room to lean up or down than sideways.
+      const lead = V.mul(V.sub(holePositionAt(session.world), focus), 0.42);
+      const zoom = Math.max(camera.zoom, 0.01);
+      const maxX = (camera.viewportWidth / zoom) * 0.3;
+      const maxY = (camera.viewportHeight / zoom) * 0.3;
+      focus = V.add(focus, { x: clamp(lead.x, -maxX, maxX), y: clamp(lead.y, -maxY, maxY) });
     }
     camera.target = V.add(focus, this.cameraOffset);
 
