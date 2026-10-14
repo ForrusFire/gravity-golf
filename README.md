@@ -79,7 +79,12 @@ npm run dev      # play it at http://localhost:5173
 - **Race your best run.** Once you have finished a hole, a faint ghost replays
   your best attempt beside you.
 - **Feats** reward style: a full orbit, a clean sink that touches nothing, a
-  ricochet, a graze past a hazard. Collecting stars unlocks ball skins.
+  ricochet, a graze past a hazard, a sink through a wormhole or out of a boost
+  ring, a switch thrown and a sink on the same shot — nine in all. Collecting
+  stars unlocks nine ball skins, the last with a trail that runs the spectrum.
+- **Keep a streak.** Finish the daily challenge on consecutive days and the title
+  screen counts them. The scorecard keeps your career: holes in one, holes under
+  par, shots struck, balls lost and time played.
 
 Hold `Shift` while aiming, with the mouse or the keys, for fine adjustment.
 Keyboard: arrows aim and set power, `Space` shoots, `Z` takes back a shot,
