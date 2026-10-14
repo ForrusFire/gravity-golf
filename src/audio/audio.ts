@@ -28,6 +28,8 @@ export class AudioEngine {
   private sfxBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  /** A looping hiss of air that rises with the ball's speed in flight. */
+  private wind: { gain: GainNode; filter: BiquadFilterNode } | null = null;
   private musicTimer: ReturnType<typeof setInterval> | null = null;
   private musicStep = 0;
   private rng = new Rng(4242);
@@ -93,6 +95,35 @@ export class AudioEngine {
     const data = buffer.getChannelData(0);
     for (let i = 0; i < length; i++) data[i] = this.rng.range(-1, 1);
     this.noiseBuffer = buffer;
+  }
+
+  /**
+   * Sets the rush of air behind a ball in flight, 0 (silent) to 1 (flat out).
+   * Changes are smoothed, so calling it every frame never clicks.
+   */
+  setFlight(intensity: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxBus || !this.noiseBuffer || ctx.state !== 'running') return;
+    if (!this.wind) {
+      const source = ctx.createBufferSource();
+      source.buffer = this.noiseBuffer;
+      source.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 0.9;
+      filter.frequency.value = 400;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxBus);
+      source.start();
+      this.wind = { gain, filter };
+    }
+    const v = clamp(intensity, 0, 1);
+    const now = ctx.currentTime;
+    this.wind.gain.gain.setTargetAtTime(v * v * 0.09, now, 0.08);
+    this.wind.filter.frequency.setTargetAtTime(300 + v * 1500, now, 0.1);
   }
 
   setSfxVolume(value: number): void {

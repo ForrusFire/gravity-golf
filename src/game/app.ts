@@ -367,6 +367,11 @@ export class GameApp {
 
     if (session && this.screen === 'replay') this.updateReplay(dt, session);
 
+    // Air rushing past a fast ball; silent at rest and in menus.
+    const live = session && (this.screen === 'play' || this.screen === 'replay');
+    const speed = live && session.state === 'flying' ? V.length(session.ball.velocity) : 0;
+    this.audio.setFlight(clamp((speed - 120) / 900, 0, 1));
+
     if (!settings.reducedMotion) this.renderer.starfield.update(dt);
     this.renderer.particles.update(dt);
     this.renderer.camera.update(dt);
