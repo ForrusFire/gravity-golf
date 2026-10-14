@@ -10,6 +10,6 @@ export default defineConfig({
     // One fork per core. The heavy gates are CPU-bound and sharded across
     // files, so the pool is the thing that decides wall-clock time.
     pool: 'forks',
-    poolOptions: { forks: { maxForks: 4 } },
+    maxWorkers: 4,
   },
 });
