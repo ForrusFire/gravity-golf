@@ -47,6 +47,7 @@ import {
 import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
 import { FEATS, PlaySession, type HoleResult, type SessionEvent } from './session';
+import { launchConfetti } from '../ui/confetti';
 import { createShowcase, type Showcase } from './showcase';
 import { resolveSkin } from './skins';
 
@@ -802,6 +803,7 @@ export class GameApp {
 
       if (justFinished) {
         this.audio.play('unlock');
+        this.celebrate(2);
         this.overlay.show(
           campaignCompleteScreen(this.campaignSummary(), {
             onScorecard: () => this.showScorecard('title'),
@@ -825,7 +827,15 @@ export class GameApp {
         }),
         {},
       );
+      // Confetti for the finishes worth throwing it for.
+      if (result.medal === 'ace') this.celebrate(1.4);
+      else if (result.medal === 'gold' && isNewBest) this.celebrate(0.8);
     }, 900);
+  }
+
+  private celebrate(amount: number): void {
+    if (this.progress.settings.reducedMotion) return;
+    launchConfetti(this.container, amount);
   }
 
   /** True once every campaign hole has been finished at least once. */
