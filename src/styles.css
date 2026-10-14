@@ -654,6 +654,21 @@ body.loading::after {
   border-color: rgba(127, 227, 166, 0.4);
 }
 
+@media (max-width: 520px) {
+  .levels__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .level-card {
+    padding: 0.55rem 0.6rem;
+  }
+
+  .level-card__name {
+    font-size: 0.86rem;
+  }
+}
+
 .level-card__map {
   display: block;
   width: 100%;
