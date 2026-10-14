@@ -29,6 +29,10 @@ export class Hud {
   private clockWrap: HTMLElement;
   private toast: HTMLElement;
   private hint: HTMLElement;
+  private intro: HTMLElement;
+  private introKicker: HTMLElement;
+  private introName: HTMLElement;
+  private introPar: HTMLElement;
   private undoButton: HTMLButtonElement;
   /** Not the level tip above — this asks the solver for a line. */
   private hintButton: HTMLButtonElement;
@@ -54,6 +58,14 @@ export class Hud {
     );
     this.toast = el('div', { class: 'hud__toast', attrs: { role: 'status', 'aria-live': 'polite' } });
     this.hint = el('div', { class: 'hud__hint' });
+    this.introKicker = el('span', { class: 'hud__intro-kicker' });
+    this.introName = el('span', { class: 'hud__intro-name' });
+    this.introPar = el('span', { class: 'hud__intro-par' });
+    this.intro = el('div', { class: 'hud__intro', attrs: { 'aria-hidden': 'true' } }, [
+      this.introKicker,
+      this.introName,
+      this.introPar,
+    ]);
 
     this.undoButton = button('↶', callbacks.onUndo, {
       class: 'btn--icon',
@@ -102,6 +114,7 @@ export class Hud {
         ]),
       ]),
       this.clockWrap,
+      this.intro,
       el('div', { class: 'hud__bottom' }, [this.hint, this.toast]),
     ]);
   }
@@ -113,8 +126,15 @@ export class Hud {
     this.hintButton.classList.toggle('btn--busy', busy);
   }
 
-  setLevel(level: LevelDef, showHint: boolean): void {
+  setLevel(level: LevelDef, showHint: boolean, kicker = ''): void {
     this.levelName.textContent = level.name;
+    // The title card: the hole announced, then out of the way.
+    this.introKicker.textContent = kicker;
+    this.introName.textContent = level.name;
+    this.introPar.textContent = `Par ${level.par}`;
+    this.intro.classList.remove('hud__intro--show');
+    void this.intro.offsetWidth;
+    this.intro.classList.add('hud__intro--show');
     this.parLabel.textContent = `Par ${level.par}`;
     clear(this.hint);
     if (showHint && level.hint) {

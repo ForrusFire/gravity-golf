@@ -69,6 +69,9 @@ const startGame = async (page: Page): Promise<void> => {
   await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button', { name: /^(Play|Continue)$/ }).click();
   await expect(page.locator('.hud')).not.toHaveClass(/hud--hidden/);
+  // Input before the hole is ready is dropped, as it is for a player; on a
+  // loaded machine that first frame can be a while coming.
+  await expect.poll(async () => (await sessionState(page))?.canShoot, { timeout: 10_000 }).toBe(true);
 };
 
 test.describe('boot', () => {

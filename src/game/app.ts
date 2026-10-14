@@ -620,6 +620,15 @@ export class GameApp {
     this.handleSessionEvents(session.shoot(direction, power));
   }
 
+  /** The line above a hole's name on its title card. */
+  private introKicker(level: LevelDef): string {
+    if (this.round) return `Round · hole ${this.round.index + 1} of ${this.round.holes.length}`;
+    const index = CAMPAIGN_IDS.indexOf(level.id);
+    if (index < 0) return level.id.startsWith('daily') ? 'Daily challenge' : 'Generated hole';
+    const chapter = CHAPTERS.find((c) => c.levels.some((l) => l.id === level.id));
+    return chapter ? `Hole ${index + 1} · ${chapter.name}` : `Hole ${index + 1}`;
+  }
+
   playLevel(level: LevelDef): void {
     this.session = new PlaySession(level);
     this.syncUrl(level);
@@ -627,7 +636,7 @@ export class GameApp {
     this.screen = 'play';
     this.overlay.hide();
     this.hud.setVisible(true);
-    this.hud.setLevel(level, !this.hintShownFor.has(level.id));
+    this.hud.setLevel(level, !this.hintShownFor.has(level.id), this.introKicker(level));
     this.hintShownFor.add(level.id);
     this.hud.sync(this.session);
 
@@ -652,6 +661,7 @@ export class GameApp {
     const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
     this.flybyTimer = flyby;
     this.renderer.prewarm(this.session.world, this.baseZoom);
+    if (!this.progress.settings.reducedMotion) this.renderer.fadeIn(0.5);
     if (flyby > 0) {
       const bounds = this.session.world.bounds;
       const overview = this.renderer.camera.fit(bounds, 40, 1.4);

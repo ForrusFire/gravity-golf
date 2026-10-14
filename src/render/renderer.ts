@@ -94,6 +94,7 @@ export class Renderer {
   private decorCache = new Map<string, BodyDecor>();
   private painter = new PlanetPainter();
   private flashState: { color: string; amount: number; start: number | null } | null = null;
+  private fadeState: { duration: number; start: number | null } | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -149,7 +150,15 @@ export class Renderer {
       this.drawZone(ctx, zone, scene.time, options.palette, scene.world.time);
     }
     for (const portal of scene.world.portals) {
-      this.drawPortal(ctx, portal.from, portal.to, portal.radius, scene.time, options.palette);
+      this.drawPortal(
+        ctx,
+        portal.from,
+        portal.to,
+        portal.radius,
+        scene.time,
+        options.palette,
+        portal.bidirectional,
+      );
     }
 
     for (const body of scene.world.bodies) {
@@ -219,6 +228,7 @@ export class Renderer {
     // Screen space, after the world transform is popped.
     this.starfield.drawVignette(ctx, this.width, this.height);
     if (!options.reducedMotion) this.drawFlash(ctx, scene.time);
+    this.drawFade(ctx, scene.time);
     if (!scene.backdrop) this.drawOffscreenMarker(ctx, scene, options.palette);
   }
 
@@ -627,6 +637,7 @@ export class Renderer {
     radius: number,
     time: number,
     palette: Palette,
+    twoWay: boolean,
   ): void {
     ctx.save();
 
@@ -651,15 +662,51 @@ export class Renderer {
       ctx.arc(p.x, p.y, radius * 1.8, 0, TAU);
       ctx.fill();
 
+      // A dark throat, so the mouth reads as an opening, not a disc.
+      const throat = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+      throat.addColorStop(0, 'rgba(10, 4, 24, 0.95)');
+      throat.addColorStop(0.75, 'rgba(60, 30, 110, 0.6)');
+      throat.addColorStop(1, 'rgba(199, 146, 255, 0.2)');
+      ctx.fillStyle = throat;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, TAU);
+      ctx.fill();
+
       ctx.strokeStyle = palette.accentAlt;
-      for (let ring = 0; ring < 3; ring++) {
-        // Rings pulse outward on a loop to suggest a one-way flow.
-        const t = ((time * 0.7 + phase + ring / 3) % 1 + 1) % 1;
-        ctx.globalAlpha = 0.75 * (1 - t);
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, radius * (0.35 + t * 0.75), 0, TAU);
-        ctx.stroke();
+      ctx.lineCap = 'round';
+      if (phase === 0) {
+        // The way in: spiral arms winding down into the throat.
+        const spin = time * 2.4;
+        ctx.lineWidth = 2;
+        for (let arm = 0; arm < 4; arm++) {
+          const base = spin + (arm / 4) * TAU;
+          const segments = 10;
+          for (let i = 0; i < segments; i++) {
+            const u0 = i / segments;
+            const u1 = (i + 1) / segments;
+            ctx.globalAlpha = 0.85 * u1;
+            ctx.beginPath();
+            ctx.moveTo(
+              p.x + Math.cos(base + u0 * 2.4) * radius * (0.15 + u0 * 0.85),
+              p.y + Math.sin(base + u0 * 2.4) * radius * (0.15 + u0 * 0.85),
+            );
+            ctx.lineTo(
+              p.x + Math.cos(base + u1 * 2.4) * radius * (0.15 + u1 * 0.85),
+              p.y + Math.sin(base + u1 * 2.4) * radius * (0.15 + u1 * 0.85),
+            );
+            ctx.stroke();
+          }
+        }
+      } else {
+        // The way out: rings pushing outward.
+        for (let ring = 0; ring < 3; ring++) {
+          const t = ((time * 0.7 + ring / 3) % 1 + 1) % 1;
+          ctx.globalAlpha = 0.75 * (1 - t);
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius * (0.35 + t * 0.75), 0, TAU);
+          ctx.stroke();
+        }
       }
 
       ctx.globalAlpha = 0.95;
@@ -670,7 +717,8 @@ export class Renderer {
     };
 
     mouth(from, 0);
-    mouth(to, 0.5);
+    // A two-way pair is an entrance at both ends.
+    mouth(to, twoWay ? 0 : 0.5);
     ctx.restore();
   }
 
@@ -1370,7 +1418,6 @@ export class Renderer {
     // Likewise a cup that refuses every heading but one.
     if (world.hole.approach) this.drawApproachCone(ctx, position, radius, world.hole.approach, rim);
 
-    const pulse = 1 + Math.sin(time * 2.4) * 0.06;
     const grad = ctx.createRadialGradient(
       position.x,
       position.y,
@@ -1386,7 +1433,30 @@ export class Renderer {
     ctx.arc(position.x, position.y, radius * 3.2, 0, TAU);
     ctx.fill();
 
-    ctx.fillStyle = palette.hole;
+    // Sonar: a ring leaves the cup every couple of seconds, so the target
+    // finds the eye from anywhere on screen.
+    const ping = (time / 2.2) % 1;
+    ctx.strokeStyle = rim;
+    ctx.globalAlpha = 0.5 * (1 - ping);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, radius * (1.2 + ping * 2.4), 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // The cup: dark at the bottom, lighter at the lip, so it reads as a hole.
+    const depth = ctx.createRadialGradient(
+      position.x + LIGHT.x * radius * 0.25,
+      position.y + LIGHT.y * radius * 0.25,
+      0,
+      position.x,
+      position.y,
+      radius,
+    );
+    depth.addColorStop(0, '#000000');
+    depth.addColorStop(0.7, palette.hole);
+    depth.addColorStop(1, withAlpha(rim, 0.35));
+    ctx.fillStyle = depth;
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, TAU);
     ctx.fill();
@@ -1396,15 +1466,17 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, TAU);
     ctx.stroke();
-
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.5;
+    // A highlight on the far lip, where the light catches it.
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = 1.2;
+    const away = Math.atan2(-LIGHT.y, -LIGHT.x);
     ctx.beginPath();
-    ctx.arc(position.x, position.y, radius * 1.6 * pulse, 0, TAU);
+    ctx.arc(position.x, position.y, radius - 1.6, away - 0.9, away + 0.9);
     ctx.stroke();
 
     if (locked) {
       // Bars across the mouth, and one pip per star still owed.
+      ctx.strokeStyle = rim;
       ctx.globalAlpha = 0.9;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -1427,28 +1499,53 @@ export class Renderer {
       }
     }
 
-    // Flag, so the target reads instantly even against a busy background.
+    // Flag, standing up out of the ground — away from the local pull, so a
+    // cup on the side of a planet flies its flag sideways like it should.
+    const g = gravityAt(world, position);
+    const gm = Math.hypot(g.x, g.y);
+    const up = gm > 1 ? { x: -g.x / gm, y: -g.y / gm } : { x: 0, y: -1 };
+    ctx.save();
+    ctx.translate(position.x, position.y);
+    ctx.rotate(Math.atan2(up.y, up.x) + Math.PI / 2);
     ctx.globalAlpha = 1;
-    const flagHeight = radius * 3.4;
-    ctx.strokeStyle = palette.textDim;
+    const flagHeight = radius * 3.8;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#c9d2ef';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(position.x, position.y);
-    ctx.lineTo(position.x, position.y - flagHeight);
+    ctx.moveTo(0, -radius * 0.2);
+    ctx.lineTo(0, -flagHeight);
     ctx.stroke();
-
-    const wave = Math.sin(time * 3) * radius * 0.14;
-    ctx.fillStyle = rim;
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(position.x, position.y - flagHeight);
-    ctx.quadraticCurveTo(
-      position.x + radius * 1.1,
-      position.y - flagHeight + radius * 0.35 + wave,
-      position.x,
-      position.y - flagHeight + radius * 0.9,
-    );
+    ctx.arc(0, -flagHeight, 1.8, 0, TAU);
+    ctx.fill();
+
+    // The pennant ripples along its length, a wave travelling to the tip.
+    const width = radius * 1.7;
+    const height = radius * 1.05;
+    const top = -flagHeight + 1;
+    const steps = 8;
+    const wave = (u: number) => Math.sin(time * 4.2 - u * 3.2) * radius * 0.16 * u;
+    const cloth = ctx.createLinearGradient(0, 0, width, 0);
+    cloth.addColorStop(0, rim);
+    cloth.addColorStop(1, withAlpha(rim, 0.75));
+    ctx.fillStyle = cloth;
+    ctx.beginPath();
+    ctx.moveTo(0, top);
+    for (let i = 1; i <= steps; i++) {
+      const u = i / steps;
+      ctx.lineTo(u * width, top + wave(u) + u * height * 0.5 * 0.3);
+    }
+    for (let i = steps; i >= 0; i--) {
+      const u = i / steps;
+      // Tapers to a point, a pennant rather than a sheet.
+      const h = height * (1 - u * 0.75);
+      ctx.lineTo(u * width, top + wave(u) + u * height * 0.15 + h);
+    }
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
 
     ctx.restore();
   }
@@ -1548,12 +1645,44 @@ export class Renderer {
       ctx.fill();
 
       ctx.translate(p.x, p.y);
-      ctx.rotate(spin);
-      ctx.fillStyle = palette.collectible;
-      ctx.beginPath();
+      // Turning on its vertical axis like a coin: reads as a solid thing in
+      // space rather than a sticker spinning flat.
+      const turn = Math.cos(spin);
+      ctx.scale(Math.max(0.18, Math.abs(turn)), 1);
+      const fill = ctx.createLinearGradient(0, -item.radius, 0, item.radius);
+      fill.addColorStop(0, '#fff3b0');
+      fill.addColorStop(0.5, palette.collectible);
+      fill.addColorStop(1, '#e8902a');
+      ctx.fillStyle = turn > 0 ? fill : palette.collectible;
       this.traceStar(ctx, 0, 0, item.radius);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(255,250,220,0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
       ctx.restore();
+
+      // Now and then a glint flares across it.
+      const glint = (scene.time * 0.45 + item.position.x * 0.013) % 1;
+      if (glint < 0.12) {
+        const k = Math.sin((glint / 0.12) * Math.PI);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = k * 0.9;
+        ctx.strokeStyle = '#fffbe6';
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        const r = item.radius * (1.2 + k * 0.9);
+        const gx = p.x + item.radius * 0.3;
+        const gy = p.y - item.radius * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(gx - r, gy);
+        ctx.lineTo(gx + r, gy);
+        ctx.moveTo(gx, gy - r);
+        ctx.lineTo(gx, gy + r);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   }
 
@@ -1854,6 +1983,27 @@ export class Renderer {
    */
   flash(color: string, amount = 0.35): void {
     this.flashState = { color, amount, start: null };
+  }
+
+  /** Opens the next scene out of black: a cut between holes, not a jump. */
+  fadeIn(duration = 0.5): void {
+    this.fadeState = { duration, start: null };
+  }
+
+  private drawFade(ctx: CanvasRenderingContext2D, time: number): void {
+    const fade = this.fadeState;
+    if (!fade) return;
+    if (fade.start === null || time < fade.start) fade.start = time;
+    const t = (time - fade.start) / fade.duration;
+    if (t >= 1) {
+      this.fadeState = null;
+      return;
+    }
+    ctx.save();
+    ctx.globalAlpha = 1 - t * t;
+    ctx.fillStyle = '#02030a';
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.restore();
   }
 
   private drawFlash(ctx: CanvasRenderingContext2D, time: number): void {
