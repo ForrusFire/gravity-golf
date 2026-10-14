@@ -6,6 +6,7 @@ import { roundPar, roundStars, roundStrokes, type RoundState } from '../game/rou
 import { BALL_SKINS, isSkinUnlocked } from '../game/skins';
 import { drawThumbnail } from '../render/thumbnail';
 import { medalBadge } from './medal';
+import { pictogram } from './pictograms';
 import { button, clear, el, formatTime, formatToPar, starRow } from './dom';
 
 const MEDAL_LABEL: Record<Medal, string> = {
@@ -314,7 +315,7 @@ export const resultsScreen = (
     result.hinted
       ? el('p', {
           class: 'results__hinted',
-          text: '💡 Hint used — no feats or ghost recorded for this run',
+          text: 'Hint used — no feats or ghost recorded for this run',
         })
       : null,
     callbacks.previousBest !== null
@@ -851,15 +852,15 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       button('Back', onBack, { class: 'btn--ghost' }),
     ]),
     el('div', { class: 'help' }, [
-      helpItem('🎯', 'Aim', 'Drag back from the ball and release, like a slingshot. The further you pull, the harder you hit.'),
-      helpItem('🪐', 'Gravity', 'Planets bend your shot. The faint field lines show which way space pulls at every point.'),
-      helpItem('⭐', 'Stars', 'Three stars are hidden on every hole. They only count if the ball survives the shot.'),
-      helpItem('⛳', 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
-      helpItem('📮', 'Directional cups', 'A cup with a wedge drawn on it only takes the ball arriving on that heading — and it will not funnel you in from any other side.'),
-      helpItem('🎯', 'Moving cups', 'Some cups travel along a dashed track. What matters is your speed relative to the cup, so parking on the rails and waiting will not do it.'),
-      helpItem('☠️', 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke. Anything lethal wears a red serrated corona.'),
-      helpItem('↩️', 'Undo', 'Take a shot back any time with Z. Restarting was already free, so undo costs nothing.'),
-      helpItem('💡', 'Stuck?', 'The 💡 button finds a line from where the ball is and sets your aim to match. The hole still counts, but a hinted run earns no style feats and is not kept as your ghost.'),
+      helpItem(pictogram('aim'), 'Aim', 'Drag back from the ball and release, like a slingshot. The further you pull, the harder you hit.'),
+      helpItem(pictogram('gravity'), 'Gravity', 'Planets bend your shot. The faint field lines show which way space pulls at every point.'),
+      helpItem(pictogram('star'), 'Stars', 'Three stars are hidden on every hole. They only count if the ball survives the shot.'),
+      helpItem(pictogram('hole'), 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
+      helpItem(pictogram('directional'), 'Directional cups', 'A cup with a wedge drawn on it only takes the ball arriving on that heading — and it will not funnel you in from any other side.'),
+      helpItem(pictogram('moving'), 'Moving cups', 'Some cups travel along a dashed track. What matters is your speed relative to the cup, so parking on the rails and waiting will not do it.'),
+      helpItem(pictogram('hazard'), 'Hazards', 'Suns, black holes and spikes destroy the ball. That costs a penalty stroke. Anything lethal wears a red serrated corona.'),
+      helpItem(pictogram('undo'), 'Undo', 'Take a shot back any time with Z. Restarting was already free, so undo costs nothing.'),
+      helpItem(pictogram('hint'), 'Stuck?', 'The hint button finds a line from where the ball is and sets your aim to match. The hole still counts, but a hinted run earns no style feats and is not kept as your ghost.'),
     ]),
 
     // From chapter 6 on, holes have state. The colour language that carries it
@@ -870,13 +871,13 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       // pass through and the other a solid you hit, so they can never be
       // mistaken for each other, and a sixth hue would cost more than it buys.
       helpSwatch('#c792ff', 'Violet is machinery', 'A dashed ring on the ground is a switch pad — roll through it to open a gate or drop a bridge. A bridge that has not appeared yet is drawn as an outline.'),
-      helpItem('🌊', 'Tides', 'Whole fields can blink too — a wind that gusts, a red field only deadly half the time, a gravity well that switches off. They fade rather than vanish, and wear the same countdown ring.'),
-      helpItem('🥁', 'Pulsing walls', 'Some barriers blink in and out on their own clock — nothing you do changes them. The ring around one counts down to its next change: amber while it is solid, green while it is gone.'),
-      helpItem('⏱️', 'Timed pads', 'A pad with a ring around it springs back when the ring runs out, so whatever it opened is only open while the ball is still moving. Some vaults need every pad thrown at once.'),
+      helpItem(pictogram('tides'), 'Tides', 'Whole fields can blink too — a wind that gusts, a red field only deadly half the time, a gravity well that switches off. They fade rather than vanish, and wear the same countdown ring.'),
+      helpItem(pictogram('pulse'), 'Pulsing walls', 'Some barriers blink in and out on their own clock — nothing you do changes them. The ring around one counts down to its next change: amber while it is solid, green while it is gone.'),
+      helpItem(pictogram('timer'), 'Timed pads', 'A pad with a ring around it springs back when the ring runs out, so whatever it opened is only open while the ball is still moving. Some vaults need every pad thrown at once.'),
       helpSwatch('#b58cff', 'Crystal blocks', 'A solid violet block shatters after a set number of hits — the cracks show what is left. The hit that breaks it lets you punch straight through.'),
-      helpItem('🔒', 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
+      helpItem(pictogram('sealed'), 'Sealed cups', 'A cup drawn in amber with bars across it will not take the ball until every star is collected. The pips above it count what is still owed.'),
       helpSwatch('#8fdcf5', 'Membranes', 'Chevrons show the one direction you may cross. There is no coming back through one.'),
-      helpItem('⭐', 'Toll gates', 'A barrier with star pips on it lifts once you have collected that many. On those holes the stars are not a bonus — they are the road.'),
+      helpItem(pictogram('toll'), 'Toll gates', 'A barrier with star pips on it lifts once you have collected that many. On those holes the stars are not a bonus — they are the road.'),
       helpSwatch('#a6f259', 'Boost rings', 'A lime ring fires the ball out along its arrows at its own fixed speed, whatever speed you arrived at. Get into it however you like — the exit is always the same.'),
     ]),
 
@@ -889,14 +890,14 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
 
     el('h3', { text: 'Controls' }),
     el('div', { class: 'help' }, [
-      helpItem('⌨️', 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, H asks for a line, R restarts, G toggles the field, C recentres, Esc pauses.'),
-      helpItem('🖱️', 'Camera', 'Scroll or pinch to zoom, right-drag or two-finger drag to look around.'),
+      helpItem(pictogram('keyboard'), 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, H asks for a line, R restarts, G toggles the field, C recentres, Esc pauses.'),
+      helpItem(pictogram('camera'), 'Camera', 'Scroll or pinch to zoom, right-drag or two-finger drag to look around.'),
     ]),
   ]);
 
-const helpItem = (glyph: string, title: string, body: string): HTMLElement =>
+const helpItem = (glyph: Node, title: string, body: string): HTMLElement =>
   el('div', { class: 'help__item' }, [
-    el('span', { class: 'help__glyph', text: glyph }),
+    el('span', { class: 'help__glyph' }, [glyph]),
     el('div', {}, [el('h4', { text: title }), el('p', { text: body })]),
   ]);
 
