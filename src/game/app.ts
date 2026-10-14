@@ -25,7 +25,8 @@ import {
   settingsScreen,
   titleScreen,
 } from '../ui/screens';
-import { holePositionAt } from '../physics/world';
+import { gravityAt, holePositionAt } from '../physics/world';
+import { bodyShapeAt, closestSurfacePoint } from '../physics/geometry';
 import { BALL_RADIUS, compileLevel, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed, dailyStreak } from './generator';
@@ -154,6 +155,7 @@ export class GameApp {
   private editor: HoleEditor | null = null;
   /** Holes in a row finished under par this sitting. Not saved: a hot hand. */
   private streak = 0;
+  private explainedBecalmed = false;
   /**
    * The path of the shot before this one, from where it was struck. Shown
    * while aiming from that same spot again — after an undo or a lost ball —
@@ -606,6 +608,7 @@ export class GameApp {
           this.audio.play('star');
           particles.starPop(event.position, palette.collectible);
           this.hud.showToast(`Star ${event.total} of ${session.totalStars}`, 1.4, 'good');
+          buzz(6);
           if (this.screen === 'play' && !this.progress.settings.reducedMotion) {
             this.hud.flyStar(camera.worldToScreen(event.position), event.total - 1);
           }
@@ -662,6 +665,11 @@ export class GameApp {
         case 'settled':
           this.keepFlightPath();
           this.trail = [];
+          // A ball stopped in open space looks like a bug the first time.
+          if (!this.explainedBecalmed && this.screen === 'play' && isBecalmed(session)) {
+            this.explainedBecalmed = true;
+            this.hud.showToast('Becalmed — nothing pulls here, so the ball floats where it stopped', 3.2);
+          }
           break;
 
         case 'died': {
@@ -1757,3 +1765,15 @@ const isTimed = (world: PlaySession['world']): boolean =>
   world.bodies.some((b) => b.motion !== undefined || b.pulse !== undefined) ||
   world.zones.some((z) => z.pulse !== undefined) ||
   world.switches.some((sw) => sw.holdTime !== undefined);
+
+/** True when the ball is at rest on nothing, held only by the lack of a pull. */
+const isBecalmed = (session: PlaySession): boolean => {
+  const g = gravityAt(session.world, session.ball.position);
+  if (Math.hypot(g.x, g.y) > 2) return false;
+  const p = session.ball.position;
+  const reach = session.ball.radius + 2;
+  return !session.world.bodies.some((body) => {
+    const shape = bodyShapeAt(body, session.world.time);
+    return closestSurfacePoint(shape, p).distance <= reach;
+  });
+};
