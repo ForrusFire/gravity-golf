@@ -29,8 +29,8 @@ const LEDGE_Y = 330;
  * generated levels a recognisable structure — purely random body placement
  * reads as noise, not as a hole someone designed.
  *
- * Nothing here moves on a clock. Switches, gates and breakable blocks are fair
- * game — they change only in response to the ball, and the solver carries that
+ * Nothing here moves on a clock. Switches, gates, breakable blocks and portals
+ * are fair game — they change only in response to the ball, and the solver carries that
  * state along each branch, so the solution it verified is exactly the solution a
  * player can replay. A spinning arm or a timed pad would make the outcome depend
  * on *when* the shot was taken, and a hole that is only completable at one
@@ -43,7 +43,8 @@ type Archetype =
   | 'binary'
   | 'pinball'
   | 'vault'
-  | 'glasshouse';
+  | 'glasshouse'
+  | 'wormhole';
 
 const ARCHETYPES: Archetype[] = [
   'slingshot',
@@ -53,6 +54,7 @@ const ARCHETYPES: Archetype[] = [
   'pinball',
   'vault',
   'glasshouse',
+  'wormhole',
 ];
 
 export interface GeneratedLevel extends LevelDef {
@@ -162,6 +164,11 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
       );
       break;
     }
+    case 'wormhole': {
+      // A tall wall and a way round it that is not over the top.
+      placeBody((id, at, r) => planet(id, at, r, rng.range(600, 820), { range: r * 5, style: 'moon' }), rng.range(50, 70), 'moon-a');
+      break;
+    }
     case 'glasshouse': {
       bodies.push(
         planet('pull', V.vec(rng.range(-340, -190), rng.range(-180, 80)), 66, rng.range(600, 800), {
@@ -253,6 +260,38 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
     }
   }
 
+  // The wormhole: one mouth on the tee's side of the blocker, the other on
+  // the cup's, both in open space. It is timeless — it changes nothing on a
+  // clock — so the verified solution stays exactly replayable.
+  const portals: NonNullable<LevelDef['portals']> = [];
+  if (archetype === 'wormhole') {
+    const open = (p: Vec2, margin: number) =>
+      bodies.every((b) => V.distance(bodyCentre(b), p) > bodyRadius(b) + margin) &&
+      V.distance(p, tee) > 120 &&
+      V.distance(p, hole) > 120;
+    let from: Vec2 | null = null;
+    let to: Vec2 | null = null;
+    for (let i = 0; i < 60 && !from; i++) {
+      const p = V.vec(rng.range(teeX + 100, blockerX - 90), rng.range(-300, 180));
+      if (open(p, 70)) from = p;
+    }
+    for (let i = 0; i < 60 && !to; i++) {
+      const p = V.vec(rng.range(blockerX + 90, holeX - 100), rng.range(-300, 120));
+      if (open(p, 70)) to = p;
+    }
+    if (from && to) {
+      portals.push({
+        id: 'wormhole',
+        from,
+        to,
+        radius: 30,
+        twist: rng.range(-0.6, 0.6),
+        boost: 1,
+        bidirectional: false,
+      });
+    }
+  }
+
   // Stars in open space, spread across the hole so collecting all three means
   // taking a different line rather than the same one three times.
   const stars: Vec2[] = [];
@@ -286,6 +325,7 @@ const buildCandidate = (rng: Rng, seed: number): GeneratedLevel => {
     ambientDrag: 0.11,
     bodies,
     switches,
+    portals,
     stars,
     seed,
     archetype,
@@ -411,6 +451,7 @@ const NAMES: Record<Archetype, string[]> = {
   pinball: ['Ricochet', 'Bounce House', 'Kickabout'],
   vault: ['Locked Room', 'The Key', 'Strongbox'],
   glasshouse: ['Panes', 'Break Point', 'Shatterline'],
+  wormhole: ['Shortcut', 'Through the Fold', 'Wormhole'],
 };
 
 const nameFor = (archetype: Archetype, seed: number): string => {
@@ -429,3 +470,4 @@ export const dailyId = (date: Date): string =>
   `daily-${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(
     date.getUTCDate(),
   ).padStart(2, '0')}`;
+
