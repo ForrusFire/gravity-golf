@@ -136,6 +136,9 @@ export class GameApp {
     back: () => void;
   } | null = null;
   private replayBadge: HTMLElement | null = null;
+  /** Holes in a row finished under par this sitting. Not saved: a hot hand. */
+  private streak = 0;
+  private streakHole: string | null = null;
   /** Eased 0..1; 1 is full speed. Drives the approach slow-motion. */
   private timeScale = 1;
   /** Counts down at level start while the camera shows the hole. */
@@ -807,6 +810,11 @@ export class GameApp {
         ? previous.bestStrokes
         : null;
     const isNewBest = previousBest === null || result.strokes < previousBest;
+    // Replaying the same hole until it goes under par is not a streak.
+    if (result.strokes >= result.par) this.streak = 0;
+    else if (this.streakHole !== result.levelId) this.streak++;
+    this.streakHole = result.levelId;
+    const streak = this.streak;
 
     // Captured either side of the submit: the finale is the moment the *last*
     // unfinished hole is completed, which need not be the last hole in order.
@@ -852,6 +860,7 @@ export class GameApp {
             hasNext: upcoming !== undefined,
             isNewBest,
             previousBest,
+            streak,
             onNext: () => upcoming && this.playLevel(upcoming),
             onRetry: () => this.playLevel(session.level),
             onLevels: () => this.showLevels(),

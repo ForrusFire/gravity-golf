@@ -269,6 +269,8 @@ export interface ResultsCallbacks {
   hasNext: boolean;
   isNewBest: boolean;
   previousBest: number | null;
+  /** Holes in a row under par, this one included. */
+  streak?: number;
 }
 
 export const resultsScreen = (
@@ -281,6 +283,12 @@ export const resultsScreen = (
     el('h2', { class: 'results__title', text: MEDAL_LABEL[result.medal] }),
     el('p', { class: 'results__level', text: levelName }),
     callbacks.isNewBest ? el('p', { class: 'results__best', text: '★ New personal best!' }) : null,
+    (callbacks.streak ?? 0) >= 2
+      ? el('p', {
+          class: 'results__streak',
+          text: `🔥 ${callbacks.streak} holes under par in a row`,
+        })
+      : null,
     el('div', { class: 'results__grid' }, [
       statBlock('Strokes', String(result.strokes)),
       statBlock('Par', String(result.par)),

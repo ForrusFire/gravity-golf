@@ -1422,3 +1422,16 @@ body.loading::after {
     opacity: 0.25;
   }
 }
+
+.results__streak {
+  margin: 0.2rem auto 0.6rem;
+  display: inline-block;
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 140, 60, 0.14);
+  border: 1px solid rgba(255, 160, 90, 0.45);
+  color: #ffb27a;
+  font-weight: 700;
+  font-size: 0.85rem;
+  animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.3s backwards;
+}
