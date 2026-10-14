@@ -653,6 +653,7 @@ export class GameApp {
 
         case 'sunk': {
           this.audio.play('sink');
+          this.flightPath = null;
           this.sinkStart = performance.now();
           particles.sinkCelebration(holePositionAt(session.world), palette.holeRim);
           if (shakeAllowed) camera.shake(4, 0.3);
@@ -726,8 +727,6 @@ export class GameApp {
     const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
     this.flybyTimer = flyby;
     this.renderer.prewarm(this.session.world, this.baseZoom);
-    // Each chapter under a sky of its own.
-    this.renderer.starfield.setVariant(level.chapter, !this.progress.settings.highContrast);
     if (!this.progress.settings.reducedMotion) this.renderer.fadeIn(0.5);
     if (flyby > 0) {
       const bounds = this.session.world.bounds;
@@ -924,6 +923,7 @@ export class GameApp {
     if (shots.length === 0) return;
     this.session = new PlaySession(level);
     this.replayState = { shots: shots.map((s) => ({ ...s })), index: 0, wait: 0.7, endIn: null, back };
+    this.flightPath = null;
     this.screen = 'replay';
     this.overlay.hide();
     this.hud.setVisible(false);
@@ -950,6 +950,23 @@ export class GameApp {
   private updateReplay(dt: number, session: PlaySession): void {
     const replay = this.replayState;
     if (!replay) return;
+
+    // A shot that knows when it was struck is struck at that same world time:
+    // anything moving on the hole has to be where it was. The aim in between
+    // plays three times faster, so a long think does not stall the replay.
+    const next = session.canShoot && replay.endIn === null ? replay.shots[replay.index] : undefined;
+    if (next?.time !== undefined) {
+      const remaining = next.time - session.world.time;
+      const advance = dt * 3;
+      if (advance < remaining - 2 * session.world.config.timeStep) {
+        this.handleSessionEvents(session.update(advance));
+        this.updateCamera(dt, session);
+        return;
+      }
+      this.handleSessionEvents(session.holdUntil(next.time));
+      this.fireReplayShot(session, next);
+    }
+
     const scaled = dt * this.updateTimeScale(dt, session);
     this.handleSessionEvents(session.update(scaled));
     this.updateTrail(scaled, session);
@@ -967,10 +984,18 @@ export class GameApp {
       replay.endIn = 1;
       return;
     }
+    if (shot.time !== undefined) return;
+    // An older record with no timing: a short beat between shots.
     replay.wait -= dt;
     if (replay.wait > 0) return;
-    replay.index++;
     replay.wait = 0.55;
+    this.fireReplayShot(session, shot);
+  }
+
+  private fireReplayShot(session: PlaySession, shot: ShotRecord): void {
+    const replay = this.replayState;
+    if (!replay) return;
+    replay.index++;
     this.trail = [];
     this.handleSessionEvents(session.shoot(V.fromAngle(shot.angle), shot.power));
   }
@@ -1443,6 +1468,12 @@ export class GameApp {
   private render(dt: number): void {
     void dt;
     const session = this.session;
+    // Each chapter under a sky of its own — re-read every frame, so turning on
+    // high contrast takes effect at once rather than on the next hole.
+    this.renderer.starfield.setVariant(
+      session ? session.level.chapter : 0,
+      !this.progress.settings.highContrast,
+    );
     const options: RenderOptions = {
       palette: this.palette(),
       showGravityField: this.progress.settings.showGravityField,
@@ -1453,7 +1484,6 @@ export class GameApp {
     if (!session) {
       // Menus sit over a little living system rather than a blank sky.
       const showcase = (this.showcase ??= createShowcase());
-      this.renderer.starfield.setVariant(0, !this.progress.settings.highContrast);
       const t = options.reducedMotion ? 3 : performance.now() / 1000;
       showcase.world.time = t;
       const camera = this.renderer.camera;

@@ -396,3 +396,53 @@ describe('a ball waiting to be struck', () => {
     expect(session.ball.position.y).toBeLessThan(start - 50);
   });
 });
+
+describe('replaying a run on a hole that moves', () => {
+  // Plays a session forward in display frames until it wants a shot again.
+  const untilReady = (session: PlaySession): void => {
+    for (let i = 0; i < 60 * 40 && !(session.canShoot || session.state === 'sunk'); i++) {
+      session.update(1 / 60);
+    }
+  };
+
+  it('strikes each shot at its recorded world time and ends exactly where the run did', () => {
+    // Every hole with something on a clock — moving cup, orbiting or pulsing
+    // bodies — where the instant of the strike changes the shot.
+    const moving = ALL_LEVELS.filter(
+      (level) => level.hole.motion || (level.bodies ?? []).some((b) => b.motion || b.pulse),
+    ).slice(0, 6);
+    expect(moving.length).toBeGreaterThan(0);
+
+    for (const level of moving) {
+      const live = new PlaySession(level);
+      // A player who thinks for a while, takes two shots, and undoes one.
+      for (let i = 0; i < 151; i++) live.update(1 / 60);
+      live.shoot(V.fromAngle(-0.6), 0.55);
+      untilReady(live);
+      if (live.state === 'sunk') continue;
+      for (let i = 0; i < 47; i++) live.update(1 / 60);
+      live.shoot(V.fromAngle(0.4), 0.4);
+      untilReady(live);
+      if (live.canUndo) live.undo();
+      for (let i = 0; i < 33; i++) live.update(1 / 60);
+      live.shoot(V.fromAngle(-1.1), 0.7);
+      untilReady(live);
+      const shots = live.shotList;
+      expect(shots.every((s) => s.time !== undefined)).toBe(true);
+
+      const replay = new PlaySession(level);
+      for (const shot of shots) {
+        untilReady(replay);
+        replay.holdUntil(shot.time!);
+        expect(replay.world.time).toBeCloseTo(shot.time!, 9);
+        replay.shoot(V.fromAngle(shot.angle), shot.power);
+      }
+      untilReady(replay);
+
+      expect(replay.state, level.id).toBe(live.state);
+      expect(replay.strokes, level.id).toBe(live.strokes);
+      expect(replay.ball.position.x, level.id).toBeCloseTo(live.ball.position.x, 6);
+      expect(replay.ball.position.y, level.id).toBeCloseTo(live.ball.position.y, 6);
+    }
+  }, 120000);
+});

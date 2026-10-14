@@ -56,6 +56,13 @@ export class GhostRunner {
         this.finished = true;
         return;
       }
+      // Strike when the original was struck: on a hole where anything moves,
+      // the same aim a second earlier is a different shot.
+      if (shot.time !== undefined && this.session.world.time + dt < shot.time) {
+        this.session.update(dt);
+        return;
+      }
+      if (shot.time !== undefined) this.session.holdUntil(shot.time);
       this.index++;
       this.session.shoot(V.fromAngle(shot.angle), shot.power);
     }

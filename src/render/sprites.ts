@@ -49,6 +49,12 @@ export class PlanetPainter {
   private worker: Worker | null | undefined;
 
   clear(): void {
+    // Worker-made bitmaps hold GPU memory until closed; do not wait on GC.
+    for (const entry of this.cache.values()) {
+      for (const sprite of entry.values()) {
+        if (sprite && 'close' in sprite.canvas) sprite.canvas.close();
+      }
+    }
     this.cache.clear();
     this.queue.clear();
     // Anything still painting for the old hole is dropped when it arrives.

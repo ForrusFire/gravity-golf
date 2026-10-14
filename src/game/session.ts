@@ -103,6 +103,13 @@ export interface ShotRecord {
   angle: number;
   /** 0..1. */
   power: number;
+  /**
+   * World clock when it was struck. Anything on the hole that moves — a cup on
+   * a track, a pulsing wall, a ball riding a platform — depends on it, so a
+   * replay has to strike at this same instant to be the same shot. Absent on
+   * records saved before it was kept, and on solver lines.
+   */
+  time?: number;
 }
 
 /** Everything undo needs to put a hole back the way it was. */
@@ -110,6 +117,12 @@ interface Snapshot {
   ballPosition: Vec2;
   worldTime: number;
   strokes: number;
+  /**
+   * Shots struck before this one. Not `strokes`: a lost ball adds a penalty
+   * stroke without a shot, so slicing the record by strokes kept the very shot
+   * being taken back.
+   */
+  shotCount: number;
   playTime: number;
   longestShot: number;
   safePosition: Vec2;
@@ -301,7 +314,7 @@ export class PlaySession {
     this.safePosition = snapshot.safePosition;
     this.bankedStars = new Set(snapshot.banked);
     this.pendingStars = [];
-    this.shots = this.shots.slice(0, snapshot.strokes);
+    this.shots = this.shots.slice(0, snapshot.shotCount);
     this.earnedFeats = [];
     this.tracker = newFeatTracker();
 
@@ -352,6 +365,7 @@ export class PlaySession {
       ballPosition: this.ball.position,
       worldTime: this.world.time,
       strokes: this.strokes,
+      shotCount: this.shots.length,
       playTime: this.playTime,
       longestShot: this.longestShot,
       safePosition: this.safePosition,
@@ -371,10 +385,29 @@ export class PlaySession {
     this.shotTimer = 0;
     this.state = 'flying';
     this.tracker = newFeatTracker();
-    this.shots.push({ angle: V.angleOf(dir), power: clamped });
+    this.shots.push({ angle: V.angleOf(dir), power: clamped, time: this.world.time });
     launchBall(this.ball, this.runtime, shotImpulse(dir, clamped, this.maxPower));
 
     return [{ type: 'shot', power: clamped, direction: dir, strokes: this.strokes }];
+  }
+
+  /**
+   * Holds the waiting ball until the world clock reaches `time`, step by step
+   * exactly as aiming does, so a replay can strike each shot at the instant it
+   * was first struck however its frames happen to fall.
+   */
+  holdUntil(time: number): SessionEvent[] {
+    const events: SessionEvent[] = [];
+    if (!this.canShoot) return events;
+    const step = this.world.config.timeStep;
+    let guard = Math.ceil(600 / step);
+    while (this.world.time < time - step * 0.5 && guard-- > 0) {
+      this.simEvents.length = 0;
+      holdBall(this.world, this.ball, this.simEvents);
+      this.drainSimEvents(events);
+    }
+    this.accumulator = 0;
+    return events;
   }
 
   /** Preview of where the current aim would send the ball. */

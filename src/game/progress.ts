@@ -91,7 +91,9 @@ const sanitizeShots = (raw: unknown): ShotRecord[] => {
     if (typeof entry !== 'object' || entry === null) continue;
     const shot = entry as Partial<ShotRecord>;
     if (!isFiniteNumber(shot.angle) || !isFiniteNumber(shot.power)) continue;
-    shots.push({ angle: shot.angle, power: Math.max(0, Math.min(1, shot.power)) });
+    const record: ShotRecord = { angle: shot.angle, power: Math.max(0, Math.min(1, shot.power)) };
+    if (isFiniteNumber(shot.time) && shot.time >= 0) record.time = shot.time;
+    shots.push(record);
   }
   return shots;
 };
