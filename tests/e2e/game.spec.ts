@@ -1057,6 +1057,42 @@ test.describe('hole editor', () => {
     await expect(page.locator('.hud__level')).toHaveText('Linked Up');
   });
 
+  test("editing someone else's shared hole leaves your own draft alone", async ({ page }) => {
+    const editorItems = () =>
+      page.evaluate(
+        () =>
+          (window.gravityGolf as unknown as { editor: { hole: { name: string; items: Array<{ t: string }> } } })
+            .editor.hole,
+      );
+    // My own draft, with a bumper in it.
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('button', { name: 'Bumper', exact: true }).click();
+    const box = (await page.locator('canvas').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    expect((await editorItems()).items.some((i) => i.t === 'bumper')).toBe(true);
+
+    // Someone else's hole, opened from a link and edited.
+    const { emptyCustomHole, encodeCustomHole } = await import('../../src/game/custom');
+    const theirs = emptyCustomHole();
+    theirs.name = 'Not Mine';
+    await page.goto(`/?custom=${encodeCustomHole(theirs)}`);
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10_000 }).toBe('custom');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Select hole' }).click();
+    await expect(page.locator('.editor')).toBeVisible();
+    await page.getByRole('button', { name: 'Rock', exact: true }).click();
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    // Back to my own: still mine.
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    const mine = await editorItems();
+    expect(mine.name).not.toBe('Not Mine');
+    expect(mine.items.some((i) => i.t === 'bumper')).toBe(true);
+    expect(mine.items.some((i) => i.t === 'rock')).toBe(false);
+  });
+
   test('a damaged custom link falls back to the title', async ({ page }) => {
     await page.goto('/?custom=notarealholeatall');
     await expect(page.getByRole('button', { name: /^(Play|Continue)$/ })).toBeVisible();

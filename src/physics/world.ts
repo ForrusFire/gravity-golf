@@ -420,8 +420,13 @@ export const accelerationAt = (world: World, p: Vec2, t = world.time): Vec2 => {
   return { x: ax, y: ay };
 };
 
-/** Below this net pull (units/s²) a slow, unsupported ball is becalmed. */
-const BECALMED_PULL = 4;
+/**
+ * Below this net pull (units/s²) a slow, unsupported ball may be becalmed —
+ * weak enough that across BECALMED_DELAY it could not even reach a quarter of
+ * rest speed, so it is floating, not at the top of a throw.
+ */
+const BECALMED_PULL = 1.5;
+const BECALMED_DELAY = 2;
 
 /** Seconds of flight before orbital decay begins: the solver's shot horizon. */
 export const DECAY_AFTER = 12;
@@ -997,7 +1002,10 @@ export const stepWorld = (
       slow && !touched && V.lengthSq(accelerationAt(world, ball.position, world.time)) < BECALMED_PULL ** 2;
     if (slow && (touched || becalmed)) {
       ball.restTimer += h;
-      if (ball.restTimer >= cfg.restDelay && !ball.atRest) {
+      // Floating needs longer than lying on something: over that time a pull
+      // strong enough to bring the ball back would have it moving again.
+      const needed = touched ? cfg.restDelay : BECALMED_DELAY;
+      if (ball.restTimer >= needed && !ball.atRest) {
         ball.atRest = true;
         ball.velocity = V.ZERO;
         events.push({ type: 'rest', position: ball.position });

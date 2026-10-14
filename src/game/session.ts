@@ -546,8 +546,12 @@ export class PlaySession {
   /** Puts the ball back at the tee and clears the scorecard. */
   restart(): void {
     this.world.time = 0;
+    this.world.spinClock = 0;
     for (const c of this.world.collectibles) c.collected = false;
-    for (const pad of this.world.switches) pad.on = false;
+    for (const pad of this.world.switches) {
+      pad.on = false;
+      pad.offAt = undefined;
+    }
     for (const body of this.level.bodies ?? []) {
       if (body.hitsToBreak !== undefined) this.world.breakables[body.id] = body.hitsToBreak;
     }

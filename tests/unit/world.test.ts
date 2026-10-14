@@ -647,3 +647,30 @@ describe('a shot struck from on top of a switch', () => {
     expect(events.some((e) => e.type === 'switch')).toBe(true);
   });
 });
+
+describe('a becalmed ball', () => {
+  it('floats where nothing pulls it', () => {
+    const world = makeWorld();
+    const ball = createBall(V.vec(0, 0), 7);
+    const runtime = createBallRuntime(world, ball);
+    launchBall(ball, runtime, V.vec(5, 0));
+    const events = run(world, ball, runtime, 3);
+    expect(events.some((e) => e.type === 'rest')).toBe(true);
+    expect(ball.atRest).toBe(true);
+  });
+
+  it('does not stop at the top of a throw that falls back', () => {
+    // Near the edge of a well's reach the pull fades but is not gone; a ball
+    // that tops out there used to hang in mid-air.
+    for (const speed of [312.78, 312.85, 312.98]) {
+      const world = makeWorld({ bodies: [planet(V.vec(0, 0), 90, 760, 498)] });
+      const ball = createBall(V.vec(0, -98), 7);
+      const runtime = createBallRuntime(world, ball);
+      launchBall(ball, runtime, V.vec(0, -speed));
+      const events = run(world, ball, runtime, 12);
+      const rest = events.find((e) => e.type === 'rest') as { position: Vec2 } | undefined;
+      // If it rests at all, it is back on the planet, not floating above it.
+      if (rest) expect(V.length(rest.position)).toBeLessThan(110);
+    }
+  });
+});

@@ -21,6 +21,12 @@ export interface HintRequest {
   position: Vec2;
   time: number;
   state: HintRequestState;
+  /**
+   * Overrides the usual two-stroke horizon and time budget — for checking a
+   * whole hole can be done, rather than suggesting a next shot.
+   */
+  horizon?: number;
+  budgetMs?: number;
   /** Strokes the hint may spend. Usually what is left before par. */
   maxStrokes: number;
 }
@@ -80,10 +86,10 @@ export const findHint = (request: HintRequest): HintResult => {
     // Two strokes is the useful horizon. The hint only has to name the *next*
     // shot, and knowing it sets up a second one is enough to trust it; a third
     // ply more than doubles the wait for an answer the player will not use.
-    maxStrokes: Math.max(1, Math.min(2, request.maxStrokes)),
+    maxStrokes: Math.max(1, Math.min(request.horizon ?? 2, request.maxStrokes)),
     beamWidth: 3,
     shotTime: 10,
-    timeBudgetMs: HINT_BUDGET_MS,
+    timeBudgetMs: request.budgetMs ?? HINT_BUDGET_MS,
     from: {
       position: request.position,
       time: request.time,

@@ -130,6 +130,11 @@ export class GameApp {
   /** The suggested line currently on screen, and the shot it came from. */
   private hintLine: { path: Vec2[]; strokes: number } | null = null;
   private hintPending = false;
+  /**
+   * The attempt a pending hint was asked for. The hole holds still only while
+   * that attempt is the one on screen and its ball has not been struck.
+   */
+  private hintSession: PlaySession | null = null;
   private disposed = false;
 
   private ghost: GhostRunner | null = null;
@@ -250,7 +255,8 @@ export class GameApp {
         this.hud.showToast('That hole link is damaged', 2.6, 'bad');
         return;
       }
-      this.playLevel(customToLevel(hole));
+      // Marked as from a link, so editing it later cannot replace a draft.
+      this.playLevel({ ...customToLevel(hole), sharedCustom: true } as LevelDef);
       return;
     }
     await this.playGenerated(
@@ -378,7 +384,8 @@ export class GameApp {
       // watch rather than something that already happened.
       // While the solver works the hole holds still, so the line it returns
       // is for the board as it will be when the player sees it.
-      const scaled = this.hintPending ? 0 : dt * this.updateTimeScale(dt, session);
+      const frozen = this.hintPending && this.hintSession === session;
+      const scaled = frozen ? 0 : dt * this.updateTimeScale(dt, session);
       const events = session.update(scaled);
       this.handleSessionEvents(events);
       this.ghost?.advance(scaled);
@@ -707,6 +714,9 @@ export class GameApp {
     this.aimState = null;
     this.previewCache = null;
     this.clearHintLine();
+    // Struck while the hint was still thinking: the answer would be for a
+    // ball no longer there, and the shot must not hang waiting for it.
+    this.hintSession = null;
     this.trail = [];
     this.flightPath = {
       levelId: session.level.id,
@@ -727,6 +737,7 @@ export class GameApp {
 
   playLevel(level: LevelDef): void {
     this.editor?.detach();
+    this.hintSession = null;
     this.session = new PlaySession(level);
     this.syncUrl(level);
     if (!this.round && level.id !== 'custom') this.progress.countAttempt(level.id);
@@ -802,6 +813,7 @@ export class GameApp {
     if (!session || this.hintPending || !session.canShoot || this.screen !== 'play') return;
 
     this.hintPending = true;
+    this.hintSession = session;
     this.hud.setHintBusy(true);
     this.hud.showToast('Looking for a line…', 1.6);
 
@@ -853,6 +865,7 @@ export class GameApp {
       );
     } finally {
       this.hintPending = false;
+      this.hintSession = null;
       if (!this.disposed) this.hud.setHintBusy(false);
     }
   }
@@ -1080,13 +1093,14 @@ export class GameApp {
 
   /** Where "back to holes" goes: the editor for a custom hole, else the list. */
   private leaveHole(level: LevelDef): void {
-    const custom = (level as LevelDef & { custom?: CustomHole }).custom;
-    if (custom) this.showEditor(custom);
-    else this.showLevels();
+    const tagged = level as LevelDef & { custom?: CustomHole; sharedCustom?: boolean };
+    if (!tagged.custom) this.showLevels();
+    else if (tagged.sharedCustom) this.showEditor(tagged.custom, true);
+    else this.showEditor(tagged.custom);
   }
 
   /** Opens the hole editor, on `hole` when given, otherwise on the draft. */
-  showEditor(hole?: CustomHole): void {
+  showEditor(hole?: CustomHole, shared = false): void {
     this.screen = 'editor';
     this.session = null;
     this.round = null;
@@ -1100,12 +1114,14 @@ export class GameApp {
         {
           canvas: this.renderer.canvas,
           camera: this.renderer.camera,
-          onTest: (custom) => this.playLevel(customToLevel(custom)),
+          onTest: (custom) =>
+            this.playLevel({ ...customToLevel(custom), sharedCustom: shared } as LevelDef),
           onShare: (custom) => void this.shareCustom(custom),
           onExit: () => this.showTitle(),
           onClick: () => this.audio.play('click'),
         },
         hole,
+        shared,
       );
     }
     this.renderer.resetDecor();
@@ -1132,6 +1148,9 @@ export class GameApp {
       time: 0,
       state: serializeBoardState(compileLevel(level)),
       maxStrokes: hole.par,
+      // The whole hole, not just the next shot — with time to look.
+      horizon: Math.min(hole.par, 5),
+      budgetMs: 8000,
     });
     if (this.editor !== editor || this.screen !== 'editor') return;
 
@@ -1145,7 +1164,7 @@ export class GameApp {
     const found = verdict?.sinks === true;
     const what = found
       ? `Sinkable in ${verdict!.strokes} — `
-      : `No way to sink it in par ${hole.par} turned up; `;
+      : `Could not find a way within par ${hole.par} — it may still be possible; `;
     editor.status(
       copied ? `${what}link copied` : `${what}${url}`,
       found ? 'good' : 'bad',

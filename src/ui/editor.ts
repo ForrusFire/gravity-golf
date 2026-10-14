@@ -50,6 +50,8 @@ const DEFAULT_RADIUS: Record<CustomBodyKind, number> = {
 };
 
 const DRAFT_KEY = 'gravity-golf/custom-draft';
+/** Where a hole opened from someone's link is kept, so it never replaces your own. */
+const SHARED_KEY = 'gravity-golf/custom-shared';
 
 export interface EditorHost {
   canvas: HTMLCanvasElement;
@@ -90,11 +92,16 @@ export class HoleEditor {
   private pointerId: number | null = null;
   private attached = false;
 
+  private readonly draftKey: string;
+
   constructor(
     private readonly host: EditorHost,
     hole?: CustomHole,
+    /** Editing a hole that came from a link: keep it apart from the draft. */
+    readonly shared = false,
   ) {
-    this.hole = hole ? structuredClone(hole) : (loadDraft() ?? emptyCustomHole());
+    this.draftKey = shared ? SHARED_KEY : DRAFT_KEY;
+    this.hole = hole ? structuredClone(hole) : (loadDraft(DRAFT_KEY) ?? emptyCustomHole());
     this.world = compileLevel(customToLevel(this.hole));
 
     this.toolbar = el('div', { class: 'editor__tools', attrs: { role: 'toolbar', 'aria-label': 'Editor tools' } });
@@ -147,7 +154,11 @@ export class HoleEditor {
     this.root = el('div', { class: 'editor' }, [this.toolbar, this.statusLine, actions]);
     this.renderToolbar();
     this.syncFields();
-    this.status(TOOLS.find((t) => t.id === this.tool)!.hint);
+    this.status(
+      shared
+        ? 'Editing a shared hole — your own draft is left as it was'
+        : TOOLS.find((t) => t.id === this.tool)!.hint,
+    );
   }
 
   attach(container: HTMLElement): void {
@@ -159,6 +170,7 @@ export class HoleEditor {
     c.addEventListener('pointermove', this.onMove);
     c.addEventListener('pointerup', this.onUp);
     c.addEventListener('pointercancel', this.onCancel);
+    c.addEventListener('lostpointercapture', this.onCancel);
     this.frame();
   }
 
@@ -171,6 +183,11 @@ export class HoleEditor {
     c.removeEventListener('pointermove', this.onMove);
     c.removeEventListener('pointerup', this.onUp);
     c.removeEventListener('pointercancel', this.onCancel);
+    c.removeEventListener('lostpointercapture', this.onCancel);
+    // A finger still down as the editor closed never sends its pointerup here;
+    // forget it, or the editor ignores every touch when it opens again.
+    this.pointerId = null;
+    this.pendingStart = null;
     this.pending = null;
     this.grab = null;
   }
@@ -417,7 +434,7 @@ export class HoleEditor {
   /** After any edit: rebuild the world, save the draft, refresh the bars. */
   private changed(refreshFields = true): void {
     this.world = compileLevel(customToLevel(this.hole));
-    saveDraft(this.hole);
+    saveDraft(this.draftKey, this.hole);
     if (refreshFields) this.syncFields();
   }
 
@@ -456,18 +473,18 @@ const distanceToSegment = (p: Vec2, a: Vec2, b: Vec2): number => {
   return V.distance(p, V.addScaled(a, ab, t));
 };
 
-const loadDraft = (): CustomHole | null => {
+const loadDraft = (key: string): CustomHole | null => {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? sanitizeCustomHole(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 };
 
-const saveDraft = (hole: CustomHole): void => {
+const saveDraft = (key: string, hole: CustomHole): void => {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(hole));
+    localStorage.setItem(key, JSON.stringify(hole));
   } catch {
     // Private mode or a full disk: the hole still plays, it just will not be
     // waiting next time.
