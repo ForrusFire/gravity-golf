@@ -91,6 +91,9 @@ export class HoleEditor {
   private grab: Grab | null = null;
   private pointerId: number | null = null;
   private attached = false;
+  /** Earlier versions of the hole, newest last, for undo. */
+  private history: CustomHole[] = [];
+  private undoButton!: HTMLButtonElement;
 
   private readonly draftKey: string;
 
@@ -110,6 +113,8 @@ export class HoleEditor {
       class: 'editor__name',
       attrs: { type: 'text', maxlength: String(CUSTOM_LIMITS.nameLength), 'aria-label': 'Hole name' },
       on: {
+        // One undo step for a whole rename, not one per letter.
+        focus: () => this.checkpoint(),
         input: () => {
           this.hole.name = this.nameInput.value;
           this.changed(false);
@@ -121,6 +126,7 @@ export class HoleEditor {
       attrs: { type: 'checkbox', 'aria-label': 'Gravity pulls down everywhere' },
       on: {
         change: () => {
+          this.checkpoint();
           this.hole.down = this.downToggle.checked;
           this.changed();
         },
@@ -130,6 +136,7 @@ export class HoleEditor {
       attrs: { type: 'checkbox', 'aria-label': 'Edges are walls' },
       on: {
         change: () => {
+          this.checkpoint();
           this.hole.walls = this.wallsToggle.checked;
           this.changed();
         },
@@ -145,6 +152,10 @@ export class HoleEditor {
       ]),
       el('label', { class: 'editor__toggle' }, [this.downToggle, el('span', { text: 'Down' })]),
       el('label', { class: 'editor__toggle' }, [this.wallsToggle, el('span', { text: 'Walls' })]),
+      (this.undoButton = button('Undo', () => this.undo(), {
+        class: 'btn--ghost',
+        attrs: { title: 'Undo (Ctrl+Z)' },
+      })),
       button('Clear', () => this.clear(), { class: 'btn--ghost' }),
       button('Share', () => this.host.onShare(this.hole), { class: 'btn--ghost' }),
       button('Test', () => this.test(), { class: 'btn--primary' }),
@@ -154,6 +165,7 @@ export class HoleEditor {
     this.root = el('div', { class: 'editor' }, [this.toolbar, this.statusLine, actions]);
     this.renderToolbar();
     this.syncFields();
+    this.undoButton.disabled = true;
     this.status(
       shared
         ? 'Editing a shared hole — your own draft is left as it was'
@@ -171,6 +183,7 @@ export class HoleEditor {
     c.addEventListener('pointerup', this.onUp);
     c.addEventListener('pointercancel', this.onCancel);
     c.addEventListener('lostpointercapture', this.onCancel);
+    window.addEventListener('keydown', this.onKey);
     this.frame();
   }
 
@@ -184,6 +197,7 @@ export class HoleEditor {
     c.removeEventListener('pointerup', this.onUp);
     c.removeEventListener('pointercancel', this.onCancel);
     c.removeEventListener('lostpointercapture', this.onCancel);
+    window.removeEventListener('keydown', this.onKey);
     // A finger still down as the editor closed never sends its pointerup here;
     // forget it, or the editor ignores every touch when it opens again.
     this.pointerId = null;
@@ -266,7 +280,8 @@ export class HoleEditor {
 
     if (tool === 'move') {
       this.grab = this.hitTest(p);
-      if (!this.grab) this.status('Nothing there to move');
+      if (this.grab) this.checkpoint();
+      else this.status('Nothing there to move');
       return;
     }
     if (tool === 'erase') {
@@ -274,12 +289,14 @@ export class HoleEditor {
       return;
     }
     if (tool === 'star') {
+      this.checkpoint();
       if (this.hole.stars.length >= CUSTOM_LIMITS.stars) this.hole.stars.shift();
       this.hole.stars.push([p.x, p.y]);
       this.changed();
       return;
     }
     if (tool === 'tee' || tool === 'cup') {
+      this.checkpoint();
       this.hole[tool] = [p.x, p.y];
       this.grab = { kind: tool, offset: V.ZERO };
       this.changed();
@@ -348,6 +365,7 @@ export class HoleEditor {
         this.status('Drag further to draw a wall');
         return;
       }
+      this.checkpoint();
       this.hole.items.push(pending);
       this.changed();
     }
@@ -404,6 +422,7 @@ export class HoleEditor {
       this.status('Every hole needs its tee and its cup — move them instead', 'bad');
       return;
     }
+    this.checkpoint();
     if (hit.kind === 'star') this.hole.stars.splice(hit.index, 1);
     else if (hit.kind === 'item') this.hole.items.splice(hit.index, 1);
     this.changed();
@@ -411,12 +430,40 @@ export class HoleEditor {
 
   /* -------------------------------------------------------------- state */
 
+  /** Remembers the hole as it is, before an edit. */
+  private checkpoint(): void {
+    this.history.push(structuredClone(this.hole));
+    if (this.history.length > 80) this.history.shift();
+    this.undoButton.disabled = false;
+  }
+
+  /** Steps back one edit. */
+  undo(): void {
+    const previous = this.history.pop();
+    if (!previous) return;
+    this.hole = previous;
+    this.changed();
+    this.undoButton.disabled = this.history.length === 0;
+    this.status('Undone');
+  }
+
+  private onKey = (event: KeyboardEvent): void => {
+    const target = event.target as HTMLElement | null;
+    if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (event.code === 'KeyZ' && (event.ctrlKey || event.metaKey || !event.shiftKey)) {
+      event.preventDefault();
+      this.undo();
+    }
+  };
+
   private setPar(par: number): void {
+    this.checkpoint();
     this.hole.par = clamp(Math.round(par), CUSTOM_LIMITS.minPar, CUSTOM_LIMITS.maxPar);
     this.changed();
   }
 
   private clear(): void {
+    this.checkpoint();
     this.hole = emptyCustomHole();
     this.changed();
     this.status('Started a fresh hole');

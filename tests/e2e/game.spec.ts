@@ -1093,6 +1093,28 @@ test.describe('hole editor', () => {
     expect(mine.items.some((i) => i.t === 'rock')).toBe(false);
   });
 
+  test('undo steps back through edits', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('gravity-golf/custom-draft'));
+    await page.reload();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    const count = () =>
+      page.evaluate(
+        () => (window.gravityGolf as unknown as { editor: { hole: { items: unknown[] } } }).editor.hole.items.length,
+      );
+    const start = await count();
+    await page.getByRole('button', { name: 'Rock', exact: true }).click();
+    const box = (await page.locator('canvas').boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.3);
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.3);
+    expect(await count()).toBe(start + 2);
+    await page.keyboard.press('Control+z');
+    expect(await count()).toBe(start + 1);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect(await count()).toBe(start);
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+  });
+
   test('a damaged custom link falls back to the title', async ({ page }) => {
     await page.goto('/?custom=notarealholeatall');
     await expect(page.getByRole('button', { name: /^(Play|Continue)$/ })).toBeVisible();
