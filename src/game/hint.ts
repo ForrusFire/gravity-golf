@@ -13,6 +13,7 @@ export interface HintRequestState {
   switchesOn: string[];
   switchTimers: Record<string, number>;
   breakables: Record<string, number>;
+  spinClock?: number;
 }
 
 export interface HintRequest {
@@ -50,6 +51,7 @@ export const serializeBoardState = (world: World): HintRequestState => {
     switchesOn: [...state.switchesOn],
     switchTimers: { ...state.switchTimers },
     breakables: { ...state.breakables },
+    spinClock: state.spinClock,
   };
 };
 
@@ -58,6 +60,7 @@ const deserializeBoardState = (state: HintRequestState): BoardState => ({
   switchesOn: new Set(state.switchesOn),
   switchTimers: { ...state.switchTimers },
   breakables: { ...state.breakables },
+  spinClock: state.spinClock ?? 0,
 });
 
 /**

@@ -10,6 +10,7 @@ import {
   createWorld,
   gravityAt,
   launchBall,
+  holdBall,
   stepWorld,
   uniformGravityAt,
   type BallRuntime,
@@ -574,40 +575,49 @@ describe('determinism', () => {
 });
 
 describe('turning gravity', () => {
-  it('rotates the background pull on its clock and keeps its strength', () => {
+  it('turns with the time spent waiting and keeps its strength', () => {
     const world = makeWorld({
       uniformGravity: V.vec(0, 300),
       gravitySpin: { speed: Math.PI / 2, phase: 0 },
     });
-    const at0 = uniformGravityAt(world, 0);
-    expect(at0.x).toBeCloseTo(0, 9);
-    expect(at0.y).toBeCloseTo(300, 9);
-    // A quarter turn a second: after one second "down" points the other way
-    // along x, and after two it is "up".
-    const at1 = uniformGravityAt(world, 1);
-    expect(at1.x).toBeCloseTo(-300, 6);
-    expect(at1.y).toBeCloseTo(0, 6);
-    const at2 = uniformGravityAt(world, 2);
-    expect(at2.y).toBeCloseTo(-300, 6);
-    expect(V.length(uniformGravityAt(world, 0.37))).toBeCloseTo(300, 9);
+    expect(uniformGravityAt(world).y).toBeCloseTo(300, 9);
+    // A quarter turn per second of waiting.
+    world.spinClock = 1;
+    expect(uniformGravityAt(world).x).toBeCloseTo(-300, 6);
+    world.spinClock = 2;
+    expect(uniformGravityAt(world).y).toBeCloseTo(-300, 6);
+    world.spinClock = 0.37;
+    expect(V.length(uniformGravityAt(world))).toBeCloseTo(300, 9);
   });
 
-  it('is what gravityAt reports, so prediction and play agree', () => {
+  it('turns while the ball is held and holds still in flight', () => {
     const world = makeWorld({
       uniformGravity: V.vec(0, 200),
       gravitySpin: { speed: 0.7, phase: 0.3 },
     });
-    for (const t of [0, 0.5, 3.2, 11]) {
-      const g = gravityAt(world, V.vec(10, 20), t);
-      const u = uniformGravityAt(world, t);
-      expect(g.x).toBeCloseTo(u.x, 9);
-      expect(g.y).toBeCloseTo(u.y, 9);
-    }
+    const ball = createBall(V.vec(0, 0), 7);
+    const events: SimEvent[] = [];
+    for (let i = 0; i < 240; i++) holdBall(world, ball, events);
+    expect(world.spinClock).toBeCloseTo(1, 9);
+    const before = uniformGravityAt(world);
+
+    const runtime = createBallRuntime(world, ball);
+    launchBall(ball, runtime, V.vec(200, 0));
+    run(world, ball, runtime, 1);
+    // A second of flight: the clock of the world moved on, the spin did not.
+    expect(world.spinClock).toBeCloseTo(1, 9);
+    expect(uniformGravityAt(world)).toEqual(before);
+    const g = gravityAt(world, V.vec(10, 20));
+    expect(g.x).toBeCloseTo(before.x, 9);
+    expect(g.y).toBeCloseTo(before.y, 9);
   });
 
   it('leaves holes without a spin exactly as they were', () => {
     const world = makeWorld({ uniformGravity: V.vec(12, 340) });
-    expect(uniformGravityAt(world, 123)).toEqual(V.vec(12, 340));
+    const ball = createBall(V.vec(0, 0), 7);
+    for (let i = 0; i < 100; i++) holdBall(world, ball, []);
+    expect(uniformGravityAt(world)).toEqual(V.vec(12, 340));
+    expect(world.spinClock).toBeUndefined();
   });
 });
 

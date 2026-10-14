@@ -264,7 +264,9 @@ export class Renderer {
     if (!options.reducedMotion) this.drawFlash(ctx, scene.time);
     this.drawFade(ctx, scene.time);
     if (!scene.backdrop) this.drawOffscreenMarker(ctx, scene, options.palette);
-    if (!scene.backdrop && scene.world.gravitySpin) this.drawGravityDial(ctx, scene.world, options.palette);
+    if (!scene.backdrop && scene.world.gravitySpin) {
+      this.drawGravityDial(ctx, scene.world, options.palette, scene.ballReady === true);
+    }
   }
 
   /**
@@ -341,7 +343,12 @@ export class Renderer {
    * A compass for holes where "down" turns: where the pull points now, and a
    * faint tick a few seconds ahead so the turn can be planned for.
    */
-  private drawGravityDial(ctx: CanvasRenderingContext2D, world: World, palette: Palette): void {
+  private drawGravityDial(
+    ctx: CanvasRenderingContext2D,
+    world: World,
+    palette: Palette,
+    turning: boolean,
+  ): void {
     const now = uniformGravityAt(world);
     const length = Math.hypot(now.x, now.y);
     if (length < 1e-6) return;
@@ -362,17 +369,20 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
 
-    // Which way it is turning, and where it will be in three seconds.
-    ctx.strokeStyle = palette.textDim;
-    ctx.globalAlpha = 0.6;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, r - 5, angle, ahead, spin.speed < 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(Math.cos(ahead) * (r - 5), Math.sin(ahead) * (r - 5), 2.2, 0, TAU);
-    ctx.fillStyle = palette.textDim;
-    ctx.fill();
+    // While the ball waits: which way it is turning, and where it will point
+    // in three seconds. In flight it holds, and the dial says so by stopping.
+    if (turning) {
+      ctx.strokeStyle = palette.textDim;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 5, angle, ahead, spin.speed < 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(Math.cos(ahead) * (r - 5), Math.sin(ahead) * (r - 5), 2.2, 0, TAU);
+      ctx.fillStyle = palette.textDim;
+      ctx.fill();
+    }
 
     ctx.globalAlpha = 1;
     ctx.rotate(angle);
@@ -390,7 +400,7 @@ export class Renderer {
     ctx.fillStyle = palette.textDim;
     ctx.font = '600 9px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('DOWN', x, y - r - 6);
+    ctx.fillText(turning ? 'DOWN' : 'HELD', x, y - r - 6);
     ctx.restore();
   }
 

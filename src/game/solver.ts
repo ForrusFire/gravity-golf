@@ -115,6 +115,8 @@ export interface BoardState {
   /** World time each held switch springs back at, for switches still counting. */
   switchTimers: Readonly<Record<string, number>>;
   breakables: Readonly<Record<string, number>>;
+  /** How far turning gravity has turned; it only turns while waiting. */
+  spinClock: number;
 }
 
 /** Snapshots a live world's mutable state so a search can resume from it. */
@@ -127,6 +129,7 @@ const initialBoardState = (world: World): BoardState => ({
     world.switches.filter((s) => s.offAt !== undefined).map((s) => [s.id, s.offAt as number]),
   ),
   breakables: { ...world.breakables },
+  spinClock: world.spinClock ?? 0,
 });
 
 interface ShotSim {
@@ -160,6 +163,7 @@ const simulateShot = (
       offAt: state.switchTimers[sw.id],
     })),
     breakables: { ...state.breakables },
+    spinClock: state.spinClock,
     // Boosters hold no state, so the live array is safe to share.
     revision: 0,
     config: { ...world.config, timeStep: opts.timeStep },

@@ -101,12 +101,15 @@ export interface World {
    */
   uniformGravity: Vec2;
   /**
-   * Turns `uniformGravity` round on a clock: "down" sweeps through the compass
-   * at `speed` radians a second, starting `phase` radians on. The hole's
-   * floor becomes a wall, then a ceiling — so when you strike matters as much
-   * as where you aim.
+   * Turns `uniformGravity` round while the ball waits to be struck: "down"
+   * sweeps through the compass at `speed` radians a second of waiting,
+   * starting `phase` radians on, and holds still once the ball is in flight.
+   * So when you strike picks the floor you play on — and the flight itself is
+   * as predictable as on any other hole, and the ball still comes to rest.
    */
   gravitySpin?: { speed: number; phase: number };
+  /** Seconds the ball has spent waiting, which is what turns `gravitySpin`. */
+  spinClock?: number;
   config: PhysicsConfig;
   /** Simulation clock in seconds; drives every moving body. */
   time: number;
@@ -316,12 +319,12 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
 
 /* ----------------------------------------------------------------- gravity */
 
-/** The hole's background gravity at time `t`, after any spin. */
-export const uniformGravityAt = (world: World, t = world.time): Vec2 => {
+/** The hole's background gravity now, after any spin. */
+export const uniformGravityAt = (world: World): Vec2 => {
   const spin = world.gravitySpin;
   const g = world.uniformGravity;
   if (!spin || (g.x === 0 && g.y === 0)) return g;
-  const a = spin.phase + spin.speed * t;
+  const a = spin.phase + spin.speed * (world.spinClock ?? 0);
   const c = Math.cos(a);
   const s = Math.sin(a);
   return { x: g.x * c - g.y * s, y: g.x * s + g.y * c };
@@ -342,7 +345,7 @@ export const gravityScaleAt = (world: World, p: Vec2): number => {
  * pull is `strength` at its own radius and falls off with the inverse square.
  */
 export const gravityAt = (world: World, p: Vec2, t = world.time): Vec2 => {
-  const uniform = uniformGravityAt(world, t);
+  const uniform = uniformGravityAt(world);
   let ax = uniform.x;
   let ay = uniform.y;
   const soft = world.config.gravitySoftening;
@@ -983,6 +986,7 @@ export const holdBall = (
   const body = support?.body;
 
   world.time = t + step;
+  if (world.gravitySpin) world.spinClock = (world.spinClock ?? 0) + step;
   releaseExpiredSwitches(world, events);
 
   if (body?.motion) {

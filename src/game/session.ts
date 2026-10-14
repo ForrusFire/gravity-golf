@@ -156,6 +156,8 @@ interface Snapshot {
   switchesOn: string[];
   /** Deadlines for held switches, so undo restores a countdown mid-flight. */
   switchTimers: Record<string, number>;
+  /** How far turning gravity had turned. */
+  spinClock: number;
   /** Hits left on each breakable. */
   breakables: Record<string, number>;
 }
@@ -325,6 +327,7 @@ export class PlaySession {
     this.ball.atRest = true;
     this.runtime = createBallRuntime(this.world, this.ball);
     this.world.time = snapshot.worldTime;
+    this.world.spinClock = snapshot.spinClock;
     this.world.shapeCache = undefined;
     for (const item of this.world.collectibles) {
       item.collected = snapshot.collected.includes(item.id);
@@ -394,6 +397,7 @@ export class PlaySession {
     this.history.push({
       ballPosition: this.ball.position,
       worldTime: this.world.time,
+      spinClock: this.world.spinClock ?? 0,
       strokes: this.strokes,
       shotCount: this.shots.length,
       playTime: this.playTime,

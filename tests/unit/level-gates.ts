@@ -74,7 +74,9 @@ export const registerReplayGate = (slice: string, levels: LevelDef[]): void => {
         );
         expect(session.result).not.toBeNull();
         expect(session.result!.strokes).toBeLessThanOrEqual(level.par);
-      });
+        // The heaviest finales take ~20s alone; on a loaded machine (the e2e
+        // suite running alongside) that tripled past the default ceiling.
+      }, 180_000);
     }
   });
 };
