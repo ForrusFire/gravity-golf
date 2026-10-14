@@ -905,10 +905,16 @@ export class GameApp {
     // Captured either side of the submit: the finale is the moment the *last*
     // unfinished hole is completed, which need not be the last hole in order.
     const wasComplete = this.campaignComplete();
+    const starsBefore = this.progress.totalStars(CAMPAIGN_IDS);
     // A round is its own score: its holes do not touch the campaign's records,
     // so a round cannot unlock locked holes, bank stars or swap ghosts.
     if (!this.round && result.levelId !== 'custom') this.progress.submit(result);
     const justFinished = !wasComplete && this.campaignComplete();
+    // Chapters open on stars; say so when this result opened one.
+    const starsAfter = this.progress.totalStars(CAMPAIGN_IDS);
+    const unlocked = CHAPTERS.filter(
+      (c) => c.starsRequired > starsBefore && c.starsRequired <= starsAfter,
+    ).map((c) => `${c.index + 1}. ${c.name}`);
     const upcoming = nextLevel(result.levelId);
 
     // A beat of celebration before the panel covers the screen.
@@ -951,6 +957,7 @@ export class GameApp {
             isNewBest,
             previousBest,
             streak,
+            unlocked,
             onNext: () => upcoming && this.playLevel(upcoming),
             onRetry: () => this.playLevel(session.level),
             onLevels: () => this.leaveHole(session.level),
@@ -966,7 +973,8 @@ export class GameApp {
       };
       showResults();
       // Confetti for the finishes worth throwing it for.
-      if (result.medal === 'ace') this.celebrate(1.4);
+      if (unlocked.length > 0) this.audio.play('unlock');
+      if (result.medal === 'ace' || unlocked.length > 0) this.celebrate(1.4);
       else if (result.medal === 'gold' && isNewBest) this.celebrate(0.8);
     }, 900);
   }

@@ -280,6 +280,8 @@ export interface ResultsCallbacks {
   previousBest: number | null;
   /** Holes in a row under par, this one included. */
   streak?: number;
+  /** Chapters this result's stars just opened. */
+  unlocked?: string[];
 }
 
 export const resultsScreen = (
@@ -292,6 +294,12 @@ export const resultsScreen = (
     el('h2', { class: 'results__title', text: MEDAL_LABEL[result.medal] }),
     el('p', { class: 'results__level', text: levelName }),
     callbacks.isNewBest ? el('p', { class: 'results__best', text: '★ New personal best!' }) : null,
+    callbacks.unlocked && callbacks.unlocked.length > 0
+      ? el('p', {
+          class: 'results__unlocked',
+          text: `New chapter open: ${callbacks.unlocked.join(', ')}`,
+        })
+      : null,
     (callbacks.streak ?? 0) >= 2
       ? el('p', {
           class: 'results__streak',
