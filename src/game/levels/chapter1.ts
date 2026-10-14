@@ -1,6 +1,4 @@
-import { TAU } from '../../core/math';
 import { vec } from '../../core/vec2';
-import { rectPolygon } from '../../physics/geometry';
 import { BALL_RADIUS, bumper, onSurface, planet, rock, wall, type LevelDef } from '../level';
 
 const BOUNDS = { minX: -640, minY: -400, maxX: 640, maxY: 400 };
@@ -137,13 +135,6 @@ export const CHAPTER_1: LevelDef[] = [
       wall('w2', vec(270, 400), vec(270, 140), 12),
       wall('w3', vec(-110, 210), vec(110, 210), 12),
       wall('w4', vec(-110, -210), vec(110, -210), 12),
-      {
-        id: 'spinner',
-        shape: rectPolygon(vec(0, 0), 160, 9),
-        material: 'metal',
-        style: 'wall',
-        motion: { kind: 'spin', speed: 0.9, phase: TAU * 0.25 },
-      },
     ],
     stars: [vec(-400, 140), vec(0, -320), vec(400, -80)],
   },
