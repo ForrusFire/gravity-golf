@@ -26,7 +26,7 @@ import {
   titleScreen,
 } from '../ui/screens';
 import { holePositionAt } from '../physics/world';
-import { BALL_RADIUS, type LevelDef } from './level';
+import { BALL_RADIUS, compileLevel, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed } from './generator';
 import { LevelGenerator } from './generator-client';
@@ -50,6 +50,7 @@ import { ProgressStore, type Settings } from './progress';
 import {
   FEATS,
   PlaySession,
+  settledTee,
   type HoleResult,
   type SessionEvent,
   type ShotRecord,
@@ -1103,13 +1104,41 @@ export class GameApp {
   }
 
   private async shareCustom(hole: CustomHole): Promise<void> {
+    const editor = this.editor;
+    if (!editor) return;
+    const problems = editor.problems();
+    if (problems.length > 0) {
+      editor.status(`Fix this first: ${problems[0]}`, 'bad');
+      return;
+    }
+    // Before handing a hole to someone else, look for a way to sink it within
+    // its par — the same search the hint uses, from the tee.
+    editor.status('Checking it can be done…');
+    const level = customToLevel(hole);
+    const verdict = await this.generator.hint({
+      level,
+      position: settledTee(level),
+      time: 0,
+      state: serializeBoardState(compileLevel(level)),
+      maxStrokes: hole.par,
+    });
+    if (this.editor !== editor || this.screen !== 'editor') return;
+
     const url = shareUrl({ kind: 'custom', code: encodeCustomHole(hole) }, window.location);
+    let copied = true;
     try {
       await navigator.clipboard.writeText(url);
-      this.editor?.status('Link copied — anyone with it can play this hole', 'good');
     } catch {
-      this.editor?.status(url);
+      copied = false;
     }
+    const found = verdict?.sinks === true;
+    const what = found
+      ? `Sinkable in ${verdict!.strokes} — `
+      : `No way to sink it in par ${hole.par} turned up; `;
+    editor.status(
+      copied ? `${what}link copied` : `${what}${url}`,
+      found ? 'good' : 'bad',
+    );
   }
 
   private celebrate(amount: number): void {
