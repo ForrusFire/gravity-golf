@@ -1062,3 +1062,31 @@ test.describe('hole editor', () => {
     await expect(page.getByRole('button', { name: /^(Play|Continue)$/ })).toBeVisible();
   });
 });
+
+test.describe('precision aiming', () => {
+  test('holding Shift makes the drag count a quarter as much', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'a keyboard modifier is a desktop affordance');
+    await startGame(page);
+    const box = (await page.locator('canvas').boundingBox())!;
+    const x = box.x + box.width * 0.5;
+    const y = box.y + box.height * 0.5;
+    const power = () =>
+      page.evaluate(
+        () => (window.gravityGolf as unknown as { input: { aim: { power: number } | null } }).input.aim?.power ?? 0,
+      );
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 90, y, { steps: 6 });
+    const coarse = await power();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(x - 180, y, { steps: 6 });
+    const fine = await power();
+    await page.keyboard.up('Shift');
+    await page.mouse.up();
+
+    // 90px more with Shift held adds what 22.5px would have.
+    expect(fine - coarse).toBeGreaterThan(0.08);
+    expect(fine - coarse).toBeLessThan(0.18);
+  });
+});

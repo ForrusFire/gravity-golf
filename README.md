@@ -81,6 +81,7 @@ npm run dev      # play it at http://localhost:5173
 - **Feats** reward style: a full orbit, a clean sink that touches nothing, a
   ricochet, a graze past a hazard. Collecting stars unlocks ball skins.
 
+Hold `Shift` while aiming, with the mouse or the keys, for fine adjustment.
 Keyboard: arrows aim and set power, `Space` shoots, `Z` takes back a shot,
 `H` asks for a line, `R` restarts, `G` toggles the gravity overlay,
 `C` recentres the camera, `Esc` pauses.

@@ -930,7 +930,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
 
     el('h3', { text: 'Controls' }),
     el('div', { class: 'help' }, [
-      helpItem(pictogram('keyboard'), 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, H asks for a line, R restarts, G toggles the field, C recentres, Esc pauses.'),
+      helpItem(pictogram('keyboard'), 'Keyboard', 'Arrows aim and set power, Space shoots, Z takes a shot back, H asks for a line, R restarts, G toggles the field, C recentres, Esc pauses. Hold Shift while aiming — keys or mouse — for fine adjustment.'),
       helpItem(pictogram('camera'), 'Camera', 'Scroll or pinch to zoom, right-drag or two-finger drag to look around.'),
     ]),
   ]);

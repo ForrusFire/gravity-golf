@@ -34,7 +34,10 @@ export interface InputConfig {
   keyboardPowerRate: number;
 }
 
-export const DEFAULT_INPUT_CONFIG: InputConfig = {
+export /** How much a movement counts while Shift is held. */
+const FINE_SCALE = 0.25;
+
+const DEFAULT_INPUT_CONFIG: InputConfig = {
   maxDragPixels: 180,
   aimMode: 'slingshot',
   keyboardTurnRate: 1.6,
@@ -53,6 +56,11 @@ export class InputController {
   private dragPointerId: number | null = null;
   private dragStart: Vec2 = V.ZERO;
   private dragCurrent: Vec2 = V.ZERO;
+  /**
+   * Precision: while Shift is held, pointer movement counts a quarter as much,
+   * measured from where the pointer was when Shift went down.
+   */
+  private fineAnchor: { pointer: Vec2; aim: Vec2 } | null = null;
 
   private panPointerId: number | null = null;
   private panLast: Vec2 = V.ZERO;
@@ -121,12 +129,14 @@ export class InputController {
   /** Advances held-key aiming. Call once per frame. */
   update(dt: number): void {
     if (!this.keyboardActive) return;
-    const turn = this.config.keyboardTurnRate;
+    // Shift for fine adjustment, as with the pointer.
+    const fine = this.keysDown.has('ShiftLeft') || this.keysDown.has('ShiftRight') ? FINE_SCALE : 1;
+    const turn = this.config.keyboardTurnRate * fine;
     if (this.keysDown.has('ArrowLeft') || this.keysDown.has('KeyA')) this.keyAngle -= turn * dt;
     if (this.keysDown.has('ArrowRight') || this.keysDown.has('KeyD')) this.keyAngle += turn * dt;
     this.keyAngle = ((this.keyAngle % TAU) + TAU) % TAU;
 
-    const rate = this.config.keyboardPowerRate;
+    const rate = this.config.keyboardPowerRate * fine;
     if (this.keysDown.has('ArrowUp') || this.keysDown.has('KeyW')) {
       this.keyPower = clamp(this.keyPower + rate * dt, 0, 1);
     }
@@ -248,6 +258,7 @@ export class InputController {
     this.dragPointerId = event.pointerId;
     this.dragStart = point;
     this.dragCurrent = point;
+    this.fineAnchor = null;
     this.element.setPointerCapture?.(event.pointerId);
     event.preventDefault();
   }
@@ -274,7 +285,14 @@ export class InputController {
     }
 
     if (this.dragging && this.dragPointerId === event.pointerId) {
-      this.dragCurrent = point;
+      if (event.shiftKey) {
+        this.fineAnchor ??= { pointer: point, aim: this.dragCurrent };
+        const anchor = this.fineAnchor;
+        this.dragCurrent = V.addScaled(anchor.aim, V.sub(point, anchor.pointer), FINE_SCALE);
+      } else {
+        this.fineAnchor = null;
+        this.dragCurrent = point;
+      }
     }
   }
 
