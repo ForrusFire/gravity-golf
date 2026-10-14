@@ -258,6 +258,8 @@ export interface BallRuntime {
   peakSpeed: number;
   /** Distance travelled since the last shot. */
   distance: number;
+  /** Seconds in flight since the last shot, for orbital decay. */
+  flightTime: number;
   /** Switch ids the ball is currently overlapping, so each pass fires once. */
   insideSwitches: Set<string>;
   /** True while sitting in a cup that refused the ball, so it complains once. */
@@ -296,6 +298,7 @@ export const createBallRuntime = (world?: World, ball?: Ball): BallRuntime => {
     airTime: 0,
     peakSpeed: 0,
     distance: 0,
+    flightTime: 0,
     insideSwitches,
     inLockedCup: false,
     insideBoosters,
@@ -417,6 +420,16 @@ export const accelerationAt = (world: World, p: Vec2, t = world.time): Vec2 => {
   return { x: ax, y: ay };
 };
 
+/** Below this net pull (units/s²) a slow, unsupported ball is becalmed. */
+const BECALMED_PULL = 4;
+
+/** Seconds of flight before orbital decay begins: the solver's shot horizon. */
+export const DECAY_AFTER = 12;
+/** Seconds over which it ramps to full strength. */
+const DECAY_RAMP = 5;
+/** Extra damping per second at full strength. */
+const DECAY_DRAG = 1.1;
+
 /** Combined per-second velocity damping at `p` (ambient plus nebula zones). */
 const dragAt = (world: World, p: Vec2): number => {
   let drag = world.config.ambientDrag;
@@ -482,6 +495,8 @@ interface CollisionResult {
   killed: boolean;
   /** Material of the surface touched this step, if any. */
   material: MaterialId | null;
+  /** Velocity of the first surface touched, so a ride on a platform can rest. */
+  support: Vec2 | null;
 }
 
 const resolveCollisions = (
@@ -492,6 +507,7 @@ const resolveCollisions = (
 ): CollisionResult => {
   let touched = false;
   let material: MaterialId | null = null;
+  let support: Vec2 | null = null;
 
   for (let iteration = 0; iteration < 4; iteration++) {
     const contact = findDeepestContact(world, ball, t);
@@ -506,7 +522,7 @@ const resolveCollisions = (
 
     if (surface.deadly) {
       events.push({ type: 'death', position: ball.position, cause: 'hazard' });
-      return { touched: true, killed: true, material };
+      return { touched: true, killed: true, material, support };
     }
 
     // Push out of the surface — only when genuinely overlapping, so a ball
@@ -521,6 +537,7 @@ const resolveCollisions = (
 
     // Work in the surface's frame so moving platforms transfer momentum.
     const surfaceVel = bodyVelocityAt(contact.body, t, contact.query.point);
+    if (iteration === 0) support = surfaceVel;
     const rel = V.sub(ball.velocity, surfaceVel);
     const vn = V.dot(rel, normal);
 
@@ -589,7 +606,7 @@ const resolveCollisions = (
     }
   }
 
-  return { touched, killed: false, material };
+  return { touched, killed: false, material, support };
 };
 
 /* ----------------------------------------------------------------- sensors */
@@ -817,10 +834,15 @@ const approachAccepted = (
   return V.dot(heading, wanted) >= Math.cos(approach.tolerance);
 };
 
-const checkBounds = (world: World, ball: Ball, events: SimEvent[]): boolean => {
+/**
+ * Applies the edge of the hole. Returns 'killed' when the ball is lost past
+ * it, 'edge' when it is resting or bouncing against a walled edge — which
+ * supports it like any surface, so a ball can come to rest there — or null.
+ */
+const checkBounds = (world: World, ball: Ball, events: SimEvent[]): 'killed' | 'edge' | null => {
   const b = world.bounds;
   const r = ball.radius;
-  if (world.boundsMode === 'open') return false;
+  if (world.boundsMode === 'open') return null;
 
   if (world.boundsMode === 'wall') {
     let p = ball.position;
@@ -840,17 +862,24 @@ const checkBounds = (world: World, ball: Ball, events: SimEvent[]): boolean => {
       p = { x: p.x, y: b.maxY - r };
       if (v.y > 0) v = { x: v.x, y: -v.y * bounce };
     }
+    // Within a hair of an edge counts as touching it, as with any surface.
+    const skin = 0.5;
+    const edge =
+      p.x - r <= b.minX + skin ||
+      p.x + r >= b.maxX - skin ||
+      p.y - r <= b.minY + skin ||
+      p.y + r >= b.maxY - skin;
     ball.position = p;
     ball.velocity = v;
-    return false;
+    return edge ? 'edge' : null;
   }
 
   const p = ball.position;
   if (p.x < b.minX - r || p.x > b.maxX + r || p.y < b.minY - r || p.y > b.maxY + r) {
     events.push({ type: 'death', position: p, cause: 'out-of-bounds' });
-    return true;
+    return 'killed';
   }
-  return false;
+  return null;
 };
 
 /* -------------------------------------------------------------------- step */
@@ -900,8 +929,13 @@ export const stepWorld = (
     const a1 = accelerationAt(world, ball.position, world.time);
     v = V.addScaled(v, a1, h / 2);
 
-    // Damping.
-    const decay = Math.exp(-dragAt(world, ball.position) * h);
+    // Damping, plus orbital decay on a shot that has been flying a long time:
+    // without it a ball that finds a near-stable orbit circles until the shot
+    // clock gives up on it. It starts past the solver's horizon, so no
+    // verified solution is touched by it.
+    runtime.flightTime += h;
+    const lingering = smoothstep((runtime.flightTime - DECAY_AFTER) / DECAY_RAMP);
+    const decay = Math.exp(-(dragAt(world, ball.position) + lingering * DECAY_DRAG) * h);
     ball.velocity = V.clampLength(V.mul(v, decay), cfg.maxSpeed);
 
     runtime.distance += V.distance(prevPosition, ball.position);
@@ -913,7 +947,7 @@ export const stepWorld = (
       runtime.alive = false;
       return;
     }
-    const touched = collision.touched;
+    let touched = collision.touched;
 
     if (touched) {
       runtime.airTime = 0;
@@ -932,10 +966,12 @@ export const stepWorld = (
       runtime.alive = false;
       return;
     }
-    if (checkBounds(world, ball, events)) {
+    const bounds = checkBounds(world, ball, events);
+    if (bounds === 'killed') {
       runtime.alive = false;
       return;
     }
+    if (bounds === 'edge') touched = true;
     if (checkHole(world, ball, runtime, h, events)) {
       runtime.sunk = true;
       ball.velocity = V.ZERO;
@@ -945,9 +981,21 @@ export const stepWorld = (
       return;
     }
 
-    // Settling: the ball must be slow *and* supported to count as at rest.
-    const restSpeed = V.length(ball.velocity);
-    if (restSpeed < cfg.restSpeed && touched) {
+    // Settling: the ball must be slow *and* supported to count as at rest —
+    // or slow where nothing pulls it, becalmed in open space past the reach of
+    // every well. Without that a ball that drifts to a stop between planets
+    // sat there, perfectly still, until the shot clock gave up on it.
+    // Measured against whatever is carrying the ball: riding a lift or swept
+    // along by an arm, it is at rest when it moves with the surface, and the
+    // hold while aiming carries it on from there.
+    const restSpeed =
+      touched && collision.support
+        ? V.distance(ball.velocity, collision.support)
+        : V.length(ball.velocity);
+    const slow = restSpeed < cfg.restSpeed;
+    const becalmed =
+      slow && !touched && V.lengthSq(accelerationAt(world, ball.position, world.time)) < BECALMED_PULL ** 2;
+    if (slow && (touched || becalmed)) {
       ball.restTimer += h;
       if (ball.restTimer >= cfg.restDelay && !ball.atRest) {
         ball.atRest = true;
@@ -1010,4 +1058,5 @@ export const launchBall = (ball: Ball, runtime: BallRuntime, impulse: Vec2): voi
   runtime.airTime = 0;
   runtime.peakSpeed = V.length(impulse);
   runtime.distance = 0;
+  runtime.flightTime = 0;
 };

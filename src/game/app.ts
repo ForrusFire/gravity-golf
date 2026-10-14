@@ -78,6 +78,10 @@ const CAMPAIGN_IDS = ALL_LEVELS.map((level) => level.id);
 
 /** The ball stops being a legible object below roughly this scale. */
 const MIN_ZOOM = 0.55;
+/** Seconds of flight before a long shot starts to play faster. */
+const FAST_AFTER = 6;
+/** The most a long shot is sped up. */
+const FAST_MAX = 2.6;
 
 const TRAIL_LENGTH = 34;
 /** Trail samples are spaced by time, not frames, so it looks the same at any FPS. */
@@ -415,6 +419,12 @@ export class GameApp {
       // is not a tense moment, it is a miss.
       const catchable = speed < hole.captureSpeed * 2.2;
       if (nearCup && catchable) target = SLOWMO_SCALE;
+      // A long flight far from the cup plays faster, so a lingering orbit is a
+      // few seconds of watching rather than twenty. Presentation only: the
+      // simulation runs the same fixed steps either way.
+      else if (session.shotClock > 0 && session.flightSeconds > FAST_AFTER && distance > hole.radius * 8) {
+        target = 1 + Math.min(FAST_MAX - 1, (session.flightSeconds - FAST_AFTER) / 3);
+      }
     }
 
     // Ease so the transition reads as a swell rather than a stutter.

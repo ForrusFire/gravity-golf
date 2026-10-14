@@ -301,6 +301,11 @@ export class PlaySession {
     this.safePosition = this.ball.position;
   }
 
+  /** Seconds the current shot has been in flight; 0 when not flying. */
+  get flightSeconds(): number {
+    return this.state === 'flying' ? this.shotTimer : 0;
+  }
+
   /** True when there is a previous shot to take back. */
   get canUndo(): boolean {
     return this.history.length > 0 && (this.state === 'aiming' || this.state === 'flying');
