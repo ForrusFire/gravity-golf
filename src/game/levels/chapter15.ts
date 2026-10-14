@@ -1,0 +1,141 @@
+import { vec } from '../../core/vec2';
+import { bumper, onSurface, planet, rock, sun, wall, type LevelDef } from '../level';
+
+const BOUNDS = { minX: -720, minY: -440, maxX: 720, maxY: 440 };
+
+/**
+ * Chapter 15 — Tumble.
+ * Every hole so far has had a fixed "down". Here it turns: the background pull
+ * sweeps round the compass on a clock, and the dial in the corner shows where
+ * it points now. A floor becomes a wall becomes a ceiling, so the same aim
+ * from the same spot is a different shot a few seconds later — the question
+ * stops being only "where" and becomes "when".
+ */
+export const CHAPTER_15: LevelDef[] = [
+  {
+    id: 'c15-1',
+    name: 'Quarter Turn',
+    chapter: 14,
+    par: 2,
+    tee: vec(-600, 311),
+    hole: { position: vec(560, 312) },
+    bounds: BOUNDS,
+    boundsMode: 'wall',
+    hint: 'Down is turning — watch the dial. Wait for the floor you want.',
+    ambientDrag: 0.16,
+    uniformGravity: vec(0, 340),
+    gravitySpin: { speed: 0.22 },
+    bodies: [
+      wall('floor', vec(-720, 330), vec(720, 330), 10),
+      wall('column', vec(0, 330), vec(0, -80), 14),
+      wall('lip-l', vec(492, 330), vec(492, 250), 9),
+      wall('lip-r', vec(628, 330), vec(628, 250), 9),
+    ],
+    stars: [vec(-300, 120), vec(0, -200), vec(320, 100)],
+  },
+  {
+    id: 'c15-2',
+    name: 'Weathervane',
+    chapter: 14,
+    par: 2,
+    tee: onSurface(vec(-260, 80), 110, -Math.PI / 2),
+    hole: { position: onSurface(vec(420, -60), 56, -Math.PI / 2, 3) },
+    bounds: BOUNDS,
+    hint: 'The planet holds you. The wind of gravity across the gap does not.',
+    ambientDrag: 0.1,
+    uniformGravity: vec(0, 150),
+    gravitySpin: { speed: 0.3, phase: 1 },
+    bodies: [
+      planet('home', vec(-260, 80), 110, 900, { range: 520 }),
+      planet('anchor', vec(420, -60), 56, 640, { range: 300, material: 'sand', style: 'sand' }),
+      rock('stone', vec(90, -220), 24, { style: 'asteroid' }),
+    ],
+    stars: [vec(-260, -150), vec(80, 40), vec(420, 140)],
+  },
+  {
+    id: 'c15-3',
+    name: 'Tumble Dryer',
+    chapter: 14,
+    par: 3,
+    tee: vec(-560, 424),
+    hole: { position: vec(0, -424) },
+    bounds: BOUNDS,
+    boundsMode: 'wall',
+    hint: 'The cup is on the ceiling. Be underneath it when up becomes down.',
+    ambientDrag: 0.18,
+    uniformGravity: vec(0, 240),
+    gravitySpin: { speed: 0.36 },
+    bodies: [
+      wall('lip-l', vec(-72, -440), vec(-72, -370), 9),
+      wall('lip-r', vec(72, -440), vec(72, -370), 9),
+      bumper('drum-a', vec(-280, 40), 46),
+      bumper('drum-b', vec(280, 40), 46),
+      sun('pilot', vec(0, 120), 34, 260, { range: 200 }),
+    ],
+    stars: [vec(-420, -200), vec(0, -40), vec(420, 240)],
+  },
+  {
+    id: 'c15-4',
+    name: 'Clockwork',
+    chapter: 14,
+    par: 3,
+    tee: onSurface(vec(-480, 160), 70, -Math.PI / 2),
+    hole: { position: onSurface(vec(470, 120), 62, -Math.PI / 2, 3) },
+    bounds: BOUNDS,
+    hint: 'A sun at the hub, and the pull around it turning like a hand.',
+    ambientDrag: 0.1,
+    uniformGravity: vec(0, 170),
+    gravitySpin: { speed: 0.42, phase: 2 },
+    bodies: [
+      planet('west', vec(-480, 160), 70, 700, { range: 380, style: 'moon' }),
+      planet('north', vec(0, -250), 64, 650, { range: 340 }),
+      planet('east', vec(470, 120), 62, 640, { range: 330, material: 'sand', style: 'sand' }),
+      sun('hub', vec(0, 90), 40, 300, { range: 220 }),
+    ],
+    stars: [vec(-240, -120), vec(0, -380), vec(250, -100)],
+  },
+  {
+    id: 'c15-5',
+    name: 'Hourglass',
+    chapter: 14,
+    par: 3,
+    tee: vec(-560, 424),
+    hole: { position: onSurface(vec(480, 0), 44, -Math.PI / 2, 3) },
+    bounds: BOUNDS,
+    boundsMode: 'wall',
+    hint: 'One narrow neck between the chambers. Let the turn pour you through.',
+    ambientDrag: 0.16,
+    uniformGravity: vec(0, 300),
+    gravitySpin: { speed: 0.3 },
+    bodies: [
+      wall('upper', vec(0, -440), vec(0, -105), 12),
+      wall('lower', vec(0, 440), vec(0, 105), 12),
+      planet('perch', vec(480, 0), 44, 620, { range: 260, material: 'sand', style: 'sand' }),
+      bumper('spill', vec(-300, -120), 40),
+    ],
+    stars: [vec(-300, 200), vec(0, 0), vec(300, 250)],
+  },
+  {
+    id: 'c15-6',
+    name: 'Revolution',
+    chapter: 14,
+    par: 4,
+    tee: vec(560, 424),
+    hole: { position: vec(-704, 0) },
+    bounds: BOUNDS,
+    boundsMode: 'wall',
+    hint: 'Faster now. The cup is in the west wall — it is only a floor for a moment.',
+    ambientDrag: 0.16,
+    uniformGravity: vec(0, 280),
+    gravitySpin: { speed: 0.5, phase: 0.4 },
+    bodies: [
+      wall('lip-n', vec(-720, -72), vec(-646, -72), 9),
+      wall('lip-s', vec(-720, 72), vec(-646, 72), 9),
+      sun('core', vec(0, 0), 46, 320, { range: 240 }),
+      bumper('ne', vec(330, -230), 42),
+      bumper('sw', vec(-330, 230), 42),
+      rock('nw', vec(-360, -260), 30),
+    ],
+    stars: [vec(300, 160), vec(0, -300), vec(-460, 0)],
+  },
+];

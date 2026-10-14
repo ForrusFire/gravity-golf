@@ -17,6 +17,7 @@ import {
   holePositionAt,
   isBodyActive,
   pulsePhase,
+  uniformGravityAt,
   zoneActive,
   type World,
 } from '../physics/world';
@@ -259,6 +260,7 @@ export class Renderer {
     if (!options.reducedMotion) this.drawFlash(ctx, scene.time);
     this.drawFade(ctx, scene.time);
     if (!scene.backdrop) this.drawOffscreenMarker(ctx, scene, options.palette);
+    if (!scene.backdrop && scene.world.gravitySpin) this.drawGravityDial(ctx, scene.world, options.palette);
   }
 
   /**
@@ -331,6 +333,63 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * A compass for holes where "down" turns: where the pull points now, and a
+   * faint tick a few seconds ahead so the turn can be planned for.
+   */
+  private drawGravityDial(ctx: CanvasRenderingContext2D, world: World, palette: Palette): void {
+    const now = uniformGravityAt(world);
+    const length = Math.hypot(now.x, now.y);
+    if (length < 1e-6) return;
+    const r = 26;
+    const x = 16 + r;
+    const y = this.height - 16 - r - (this.width < 600 ? 64 : 8);
+    const angle = Math.atan2(now.y, now.x);
+    const spin = world.gravitySpin!;
+    const ahead = angle + spin.speed * 3;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = palette.panel;
+    ctx.strokeStyle = palette.panelBorder;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+
+    // Which way it is turning, and where it will be in three seconds.
+    ctx.strokeStyle = palette.textDim;
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r - 5, angle, ahead, spin.speed < 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(Math.cos(ahead) * (r - 5), Math.sin(ahead) * (r - 5), 2.2, 0, TAU);
+    ctx.fillStyle = palette.textDim;
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.rotate(angle);
+    ctx.fillStyle = palette.accent;
+    ctx.beginPath();
+    ctx.moveTo(r - 7, 0);
+    ctx.lineTo(-6, -6);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = palette.textDim;
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DOWN', x, y - r - 6);
+    ctx.restore();
+  }
+
   private applyWorldTransform(ctx: CanvasRenderingContext2D): void {
     const eye = this.camera.eye;
     ctx.translate(this.width / 2, this.height / 2);
@@ -388,8 +447,9 @@ export class Renderer {
         // Where the pull is only the hole's steady background gravity, a
         // whisper of a guide says enough; motes there just look like rain.
         // They are for the wells, where the field bends.
-        const ux = g.x - world.uniformGravity.x;
-        const uy = g.y - world.uniformGravity.y;
+        const uniform = uniformGravityAt(world);
+        const ux = g.x - uniform.x;
+        const uy = g.y - uniform.y;
         const steady = ux * ux + uy * uy < 36;
 
         ctx.globalAlpha = strength * (steady ? 0.04 : 0.08);

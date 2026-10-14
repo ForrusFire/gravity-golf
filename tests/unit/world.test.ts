@@ -11,6 +11,7 @@ import {
   gravityAt,
   launchBall,
   stepWorld,
+  uniformGravityAt,
   type BallRuntime,
   type SimEvent,
   type World,
@@ -569,5 +570,70 @@ describe('determinism', () => {
     expect(a.ball.position).toEqual(b.ball.position);
     expect(a.ball.velocity).toEqual(b.ball.velocity);
     expect(eventsA.length).toBe(eventsB.length);
+  });
+});
+
+describe('turning gravity', () => {
+  it('rotates the background pull on its clock and keeps its strength', () => {
+    const world = makeWorld({
+      uniformGravity: V.vec(0, 300),
+      gravitySpin: { speed: Math.PI / 2, phase: 0 },
+    });
+    const at0 = uniformGravityAt(world, 0);
+    expect(at0.x).toBeCloseTo(0, 9);
+    expect(at0.y).toBeCloseTo(300, 9);
+    // A quarter turn a second: after one second "down" points the other way
+    // along x, and after two it is "up".
+    const at1 = uniformGravityAt(world, 1);
+    expect(at1.x).toBeCloseTo(-300, 6);
+    expect(at1.y).toBeCloseTo(0, 6);
+    const at2 = uniformGravityAt(world, 2);
+    expect(at2.y).toBeCloseTo(-300, 6);
+    expect(V.length(uniformGravityAt(world, 0.37))).toBeCloseTo(300, 9);
+  });
+
+  it('is what gravityAt reports, so prediction and play agree', () => {
+    const world = makeWorld({
+      uniformGravity: V.vec(0, 200),
+      gravitySpin: { speed: 0.7, phase: 0.3 },
+    });
+    for (const t of [0, 0.5, 3.2, 11]) {
+      const g = gravityAt(world, V.vec(10, 20), t);
+      const u = uniformGravityAt(world, t);
+      expect(g.x).toBeCloseTo(u.x, 9);
+      expect(g.y).toBeCloseTo(u.y, 9);
+    }
+  });
+
+  it('leaves holes without a spin exactly as they were', () => {
+    const world = makeWorld({ uniformGravity: V.vec(12, 340) });
+    expect(uniformGravityAt(world, 123)).toEqual(V.vec(12, 340));
+  });
+});
+
+describe('a shot struck from on top of a switch', () => {
+  it('does not throw the pad again on its first step', () => {
+    const world = makeWorld({
+      switches: [{ id: 'pad', position: V.vec(0, 0), radius: 20, once: false, on: true }],
+    });
+    const ball = createBall(V.vec(0, 0), 7);
+    // Seeded from where the ball lies, as every shot start now is.
+    const runtime = createBallRuntime(world, ball);
+    expect(runtime.insideSwitches.has('pad')).toBe(true);
+    launchBall(ball, runtime, V.vec(300, 0));
+    const events = run(world, ball, runtime, 0.5);
+    expect(events.filter((e) => e.type === 'switch')).toEqual([]);
+    expect(world.switches[0]!.on).toBe(true);
+  });
+
+  it('throws it when the ball rolls onto it from outside', () => {
+    const world = makeWorld({
+      switches: [{ id: 'pad', position: V.vec(100, 0), radius: 20, once: false, on: false }],
+    });
+    const ball = createBall(V.vec(0, 0), 7);
+    const runtime = createBallRuntime(world, ball);
+    launchBall(ball, runtime, V.vec(300, 0));
+    const events = run(world, ball, runtime, 0.6);
+    expect(events.some((e) => e.type === 'switch')).toBe(true);
   });
 });

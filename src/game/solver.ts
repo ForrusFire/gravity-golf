@@ -167,7 +167,7 @@ const simulateShot = (
     shapeCache: undefined,
   };
   const ball: Ball = createBall(from, BALL_RADIUS);
-  const runtime = createBallRuntime();
+  const runtime = createBallRuntime(sandbox, ball);
   launchBall(ball, runtime, impulse);
 
   const events: SimEvent[] = [];

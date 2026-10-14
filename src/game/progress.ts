@@ -110,7 +110,10 @@ const sanitizeRecord = (raw: unknown): LevelRecord | null => {
     bestStrokes: hasStrokes ? Math.floor(r.bestStrokes as number) : Infinity,
     bestShots: sanitizeShots(r.bestShots),
     bestStars: isFiniteNumber(r.bestStars) ? Math.max(0, Math.min(3, Math.floor(r.bestStars))) : 0,
-    bestMedal: (r.bestMedal && r.bestMedal in MEDAL_RANK ? r.bestMedal : 'none') as Medal,
+    // Own keys only: `in` would accept "toString" from a corrupt save.
+    bestMedal: (typeof r.bestMedal === 'string' && Object.prototype.hasOwnProperty.call(MEDAL_RANK, r.bestMedal)
+      ? r.bestMedal
+      : 'none') as Medal,
     bestTime: isFiniteNumber(r.bestTime) && r.bestTime > 0 ? r.bestTime : Infinity,
     completed: r.completed === true && hasStrokes,
     attempts,

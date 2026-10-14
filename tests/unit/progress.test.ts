@@ -54,6 +54,36 @@ describe('parseProgress', () => {
     expect(parsed.levels).toEqual({});
   });
 
+  it('rejects a medal name that is only an inherited property', () => {
+    const parsed = parseProgress(
+      JSON.stringify({ levels: { 'c1-1': { bestStrokes: 2, bestMedal: 'toString', completed: true, attempts: 1 } } }),
+    );
+    expect(parsed.levels['c1-1']?.bestMedal).toBe('none');
+  });
+
+  it('keeps the moment each best-run shot was struck, and drops nonsense times', () => {
+    const parsed = parseProgress(
+      JSON.stringify({
+        levels: {
+          'c1-1': {
+            bestStrokes: 2,
+            completed: true,
+            attempts: 1,
+            bestShots: [
+              { angle: 0.5, power: 0.4, time: 3.25 },
+              { angle: 1, power: 0.6, time: -2 },
+              { angle: 1.5, power: 0.7, time: 'soon' },
+            ],
+          },
+        },
+      }),
+    );
+    const shots = parsed.levels['c1-1']!.bestShots;
+    expect(shots[0]!.time).toBe(3.25);
+    expect(shots[1]!.time).toBeUndefined();
+    expect(shots[2]!.time).toBeUndefined();
+  });
+
   it('keeps valid level records', () => {
     const parsed = parseProgress(
       JSON.stringify({

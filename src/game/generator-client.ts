@@ -107,6 +107,8 @@ export class LevelGenerator {
   dispose(): void {
     this.worker?.terminate();
     this.worker = null;
+    // Answer everyone still waiting, or their busy flags never clear.
+    for (const resolve of this.pending.values()) (resolve as (v: unknown) => void)(null);
     this.pending.clear();
   }
 }

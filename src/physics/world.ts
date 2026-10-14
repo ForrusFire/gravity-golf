@@ -100,6 +100,13 @@ export interface World {
    * and unlike a body it is unaffected by distance.
    */
   uniformGravity: Vec2;
+  /**
+   * Turns `uniformGravity` round on a clock: "down" sweeps through the compass
+   * at `speed` radians a second, starting `phase` radians on. The hole's
+   * floor becomes a wall, then a ceiling — so when you strike matters as much
+   * as where you aim.
+   */
+  gravitySpin?: { speed: number; phase: number };
   config: PhysicsConfig;
   /** Simulation clock in seconds; drives every moving body. */
   time: number;
@@ -256,18 +263,41 @@ export interface BallRuntime {
   insideBoosters: Set<string>;
 }
 
-export const createBallRuntime = (): BallRuntime => ({
-  portalCooldown: 0,
-  alive: true,
-  sunk: false,
-  lastMaterial: null,
-  airTime: 0,
-  peakSpeed: 0,
-  distance: 0,
-  insideSwitches: new Set(),
-  inLockedCup: false,
-  insideBoosters: new Set(),
-});
+/**
+ * Fresh per-ball bookkeeping. Given the world and the ball, it starts out
+ * already "inside" any pad or ring the ball is touching — so a shot struck from
+ * on top of a switch does not throw it again on its first step. Every place a
+ * shot can begin (a new hole, undo, respawn, the solver, the aim preview)
+ * passes them, so all of them agree about what that first step does.
+ */
+export const createBallRuntime = (world?: World, ball?: Ball): BallRuntime => {
+  const insideSwitches = new Set<string>();
+  const insideBoosters = new Set<string>();
+  if (world && ball) {
+    for (const pad of world.switches) {
+      const reach = pad.radius + ball.radius;
+      if (V.distanceSq(ball.position, pad.position) <= reach * reach) insideSwitches.add(pad.id);
+    }
+    for (const booster of world.boosters) {
+      const reach = booster.radius + ball.radius;
+      if (V.distanceSq(ball.position, booster.position) <= reach * reach) {
+        insideBoosters.add(booster.id);
+      }
+    }
+  }
+  return {
+    portalCooldown: 0,
+    alive: true,
+    sunk: false,
+    lastMaterial: null,
+    airTime: 0,
+    peakSpeed: 0,
+    distance: 0,
+    insideSwitches,
+    inLockedCup: false,
+    insideBoosters,
+  };
+};
 
 export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'>): World => ({
   bodies: [],
@@ -286,6 +316,17 @@ export const createWorld = (init: Partial<World> & Pick<World, 'hole' | 'bounds'
 
 /* ----------------------------------------------------------------- gravity */
 
+/** The hole's background gravity at time `t`, after any spin. */
+export const uniformGravityAt = (world: World, t = world.time): Vec2 => {
+  const spin = world.gravitySpin;
+  const g = world.uniformGravity;
+  if (!spin || (g.x === 0 && g.y === 0)) return g;
+  const a = spin.phase + spin.speed * t;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return { x: g.x * c - g.y * s, y: g.x * s + g.y * c };
+};
+
 /** Multiplier applied to gravity at `p` by any overlapping gravityScale zone. */
 export const gravityScaleAt = (world: World, p: Vec2): number => {
   let scale = 1;
@@ -301,8 +342,9 @@ export const gravityScaleAt = (world: World, p: Vec2): number => {
  * pull is `strength` at its own radius and falls off with the inverse square.
  */
 export const gravityAt = (world: World, p: Vec2, t = world.time): Vec2 => {
-  let ax = world.uniformGravity.x;
-  let ay = world.uniformGravity.y;
+  const uniform = uniformGravityAt(world, t);
+  let ax = uniform.x;
+  let ay = uniform.y;
   const soft = world.config.gravitySoftening;
 
   for (const resolved of resolveBodies(world, t)) {

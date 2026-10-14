@@ -67,6 +67,8 @@ export interface LevelDef {
    * plain "down" instead of parking a huge planet off-screen.
    */
   uniformGravity?: Vec2;
+  /** Rotates `uniformGravity` on a clock. See `World.gravitySpin`. */
+  gravitySpin?: { speed: number; phase?: number };
   /** Maximum launch speed in units/s. */
   maxPower?: number;
   /** Seconds a shot may run before it is abandoned and replayed. */
@@ -115,6 +117,9 @@ export const compileLevel = (level: LevelDef): World =>
     bounds: level.bounds,
     boundsMode: level.boundsMode ?? 'kill',
     uniformGravity: level.uniformGravity ?? V.ZERO,
+    gravitySpin: level.gravitySpin
+      ? { speed: level.gravitySpin.speed, phase: level.gravitySpin.phase ?? 0 }
+      : undefined,
     config: { ...DEFAULT_PHYSICS, ambientDrag: level.ambientDrag ?? DEFAULT_PHYSICS.ambientDrag },
     time: 0,
   });

@@ -265,7 +265,7 @@ export class PlaySession {
     this.level = level;
     this.world = compileLevel(level);
     this.ball = createBall(settledTee(level), BALL_RADIUS);
-    this.runtime = createBallRuntime();
+    this.runtime = createBallRuntime(this.world, this.ball);
     this.safePosition = this.ball.position;
   }
 
@@ -293,7 +293,7 @@ export class PlaySession {
 
     this.ball = createBall(snapshot.ballPosition, BALL_RADIUS);
     this.ball.atRest = true;
-    this.runtime = createBallRuntime();
+    this.runtime = createBallRuntime(this.world, this.ball);
     this.world.time = snapshot.worldTime;
     this.world.shapeCache = undefined;
     for (const item of this.world.collectibles) {
@@ -410,6 +410,19 @@ export class PlaySession {
     return events;
   }
 
+  /** Puts back every star picked up on the shot in flight. */
+  private dropPendingStars(out: SessionEvent[]): void {
+    if (this.pendingStars.length === 0) return;
+    for (const id of this.pendingStars) {
+      const item = this.world.collectibles.find((c) => c.id === id);
+      if (item) item.collected = false;
+      out.push({ type: 'star-lost', id });
+    }
+    this.pendingStars = [];
+    // Toll gates read the collected count; the cached board must see it drop.
+    this.world.revision = (this.world.revision ?? 0) + 1;
+  }
+
   /** Preview of where the current aim would send the ball. */
   predict(direction: Vec2, power: number, options?: Partial<TrajectoryOptions>): Trajectory {
     return predictTrajectory(
@@ -480,6 +493,10 @@ export class PlaySession {
     this.accumulator = Math.min(this.accumulator, step);
 
     if (this.state === 'flying' && this.shotTimer >= levelShotTimeout(this.level)) {
+      // An abandoned shot is replayed from where it was struck, so like a lost
+      // ball its stars do not count. Left collected, they were stranded: not
+      // banked, not on the board, and never collectable again after an undo.
+      this.dropPendingStars(events);
       events.push({ type: 'timeout', strokes: this.strokes });
       this.beginRespawn();
     }
@@ -498,7 +515,7 @@ export class PlaySession {
     this.world.revision = (this.world.revision ?? 0) + 1;
     this.world.shapeCache = undefined;
     this.ball = createBall(settledTee(this.level), BALL_RADIUS);
-    this.runtime = createBallRuntime();
+    this.runtime = createBallRuntime(this.world, this.ball);
     this.state = 'aiming';
     this.strokes = 0;
     this.playTime = 0;
@@ -632,12 +649,7 @@ export class PlaySession {
 
         case 'death':
           // Stars picked up during a fatal shot do not count — finish the shot.
-          for (const id of this.pendingStars) {
-            const item = this.world.collectibles.find((c) => c.id === id);
-            if (item) item.collected = false;
-            out.push({ type: 'star-lost', id });
-          }
-          this.pendingStars = [];
+          this.dropPendingStars(out);
           // A death costs a penalty stroke on top of the shot that caused it.
           this.strokes++;
           out.push({
@@ -699,7 +711,7 @@ export class PlaySession {
 
   private respawn(): void {
     this.ball = createBall(this.safePosition, BALL_RADIUS);
-    this.runtime = createBallRuntime();
+    this.runtime = createBallRuntime(this.world, this.ball);
     this.ball.atRest = true;
     this.state = 'aiming';
     this.shotTimer = 0;

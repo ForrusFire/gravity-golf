@@ -58,7 +58,7 @@ export const predictTrajectory = (
   };
 
   const probe: Ball = { ...ball, velocity: impulse, atRest: false, restTimer: 0 };
-  const runtime = createBallRuntime();
+  const runtime = createBallRuntime(sandbox, probe);
   const events: SimEvent[] = [];
 
   const points: Vec2[] = [probe.position];

@@ -351,6 +351,8 @@ export class InputController {
     }
 
     if (event.code === 'Space' || event.code === 'Enter') {
+      // On a focused button or link these keys press it; they are not a shot.
+      if (target && target.closest('button, a, [role="button"]')) return;
       if (this.keyboardActive && this.callbacks.canShoot()) {
         event.preventDefault();
         const direction = V.fromAngle(this.keyAngle);

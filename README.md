@@ -82,7 +82,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 
 ## The course
 
-84 holes across fourteen chapters, each introducing one idea at a time:
+90 holes across fifteen chapters, each introducing one idea at a time:
 
 | Chapter | Introduces |
 | --- | --- |
@@ -100,6 +100,7 @@ Mouse/touch: scroll or pinch to zoom, right-drag or two-finger drag to pan.
 | 12. Approach | Cups that only take the ball from one direction |
 | 13. Toll Roads | Stars stop being a bonus and become the road |
 | 14. Tides | The fields themselves come and go |
+| 15. Tumble | Background gravity that turns on a clock, with a compass to plan the turn |
 
 Finish every hole and the course closes with a card of the whole run: total
 strokes against par, holes under par, stars, feats and time.

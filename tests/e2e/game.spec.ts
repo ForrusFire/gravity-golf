@@ -232,6 +232,53 @@ test.describe('playing a hole', () => {
     expect(errors).toEqual([]);
   });
 
+  const dropInCup = (page: Page) =>
+    page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          ball: { position: { x: number; y: number }; atRest: boolean };
+          world: { hole: { position: { x: number; y: number }; radius: number } };
+        } | null;
+      };
+      const s = app.session!;
+      s.ball.position = {
+        x: s.world.hole.position.x,
+        y: s.world.hole.position.y - s.world.hole.radius * 0.4,
+      };
+      Object.assign(s, { state: 'flying' });
+      Object.assign(s.ball, { atRest: false });
+    });
+
+  test('pausing just after the ball drops still brings up the results', async ({ page }) => {
+    await startGame(page);
+    await dropInCup(page);
+    await expect.poll(async () => (await sessionState(page))?.state).toBe('sunk');
+    // Inside the beat before the panel: the pause must not strand the hole.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('restarting just after the ball drops plays the fresh attempt', async ({ page }) => {
+    await startGame(page);
+    await dropInCup(page);
+    await expect.poll(async () => (await sessionState(page))?.state).toBe('sunk');
+    await page.evaluate(() => (window.gravityGolf as unknown as { retry(): void }).retry());
+    await page.waitForTimeout(1500);
+    // The old hole's results must not come back over the new attempt.
+    await expect(page.locator('.results')).toBeHidden();
+    expect((await sessionState(page))?.state).toBe('aiming');
+  });
+
+  test('Enter on a focused HUD button presses it rather than aiming', async ({ page }) => {
+    await startGame(page);
+    await shoot(page, 1, -0.3, 0.5);
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(1);
+    await expect.poll(async () => (await sessionState(page))?.canShoot, { timeout: 15_000 }).toBe(true);
+    await page.getByRole('button', { name: 'Restart hole' }).focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(0);
+  });
+
   test('undo takes back a shot and is disabled with nothing to undo', async ({ page }) => {
     await startGame(page);
     const undo = page.getByRole('button', { name: 'Take back last shot' });
@@ -586,6 +633,12 @@ test.describe('playing a round', () => {
     await expect(page.locator('.results')).toHaveCount(0);
     // The address bar still names the round, not whichever hole it is on.
     expect(new URL(page.url()).search).toBe('?round=777');
+    // And a round is scored on its own: the campaign record is untouched, so
+    // a round can never unlock a hole or bank its stars.
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('gravity-golf/progress') ?? '{}'),
+    );
+    expect(saved.levels?.[first]?.completed ?? false).toBe(false);
   });
 
   test('ends with a card of the whole round', async ({ page }) => {

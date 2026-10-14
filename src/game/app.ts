@@ -354,7 +354,9 @@ export class GameApp {
     if (session && this.screen === 'play') {
       // The clock slows on a tense approach, so a near miss is something you
       // watch rather than something that already happened.
-      const scaled = dt * this.updateTimeScale(dt, session);
+      // While the solver works the hole holds still, so the line it returns
+      // is for the board as it will be when the player sees it.
+      const scaled = this.hintPending ? 0 : dt * this.updateTimeScale(dt, session);
       const events = session.update(scaled);
       this.handleSessionEvents(events);
       this.ghost?.advance(scaled);
@@ -698,7 +700,7 @@ export class GameApp {
   playLevel(level: LevelDef): void {
     this.session = new PlaySession(level);
     this.syncUrl(level);
-    this.progress.countAttempt(level.id);
+    if (!this.round) this.progress.countAttempt(level.id);
     this.screen = 'play';
     this.overlay.hide();
     this.hud.setVisible(true);
@@ -790,7 +792,14 @@ export class GameApp {
 
       if (this.disposed) return;
       const current = this.session;
-      if (!current || current.level !== level || current.strokes !== strokes || !current.canShoot) {
+      // The same attempt, from the same spot: a restart in the meantime has
+      // the same hole and the same stroke count but is not this board.
+      if (
+        current !== session ||
+        current.strokes !== strokes ||
+        !current.canShoot ||
+        V.distance(current.ball.position, position) > 1e-6
+      ) {
         return;
       }
 
@@ -807,7 +816,7 @@ export class GameApp {
       this.audio.play('unlock');
       this.hud.showToast(
         result.sinks
-          ? `This line sinks it in ${result.strokes}`
+          ? `This line sinks it in ${result.strokes}${isTimed(current.world) ? ' — strike now' : ''}`
           : 'No sink from here — this is the best line on',
         2.6,
         result.sinks ? 'good' : undefined,
@@ -853,13 +862,17 @@ export class GameApp {
     // Captured either side of the submit: the finale is the moment the *last*
     // unfinished hole is completed, which need not be the last hole in order.
     const wasComplete = this.campaignComplete();
-    this.progress.submit(result);
+    // A round is its own score: its holes do not touch the campaign's records,
+    // so a round cannot unlock locked holes, bank stars or swap ghosts.
+    if (!this.round) this.progress.submit(result);
     const justFinished = !wasComplete && this.campaignComplete();
     const upcoming = nextLevel(result.levelId);
 
     // A beat of celebration before the panel covers the screen.
     window.setTimeout(() => {
-      if (this.disposed || this.screen !== 'play') return;
+      // Bound to this session: a restart or a new hole in the meantime means
+      // this result is no longer the one on screen.
+      if (this.disposed || this.screen !== 'play' || this.session !== session) return;
 
       // Mid-round, the next hole follows straight on: a round is one continuous
       // run, and a results panel between every hole would break it into nine.
@@ -1134,6 +1147,9 @@ export class GameApp {
   private pause(): void {
     const session = this.session;
     if (!session || this.screen !== 'play') return;
+    // The results panel is a beat away; pausing now would strand the hole
+    // finished with nothing on screen, and a round with no way forward.
+    if (session.state === 'sunk') return;
     this.screen = 'paused';
     this.audio.play('click');
     this.overlay.show(
@@ -1555,3 +1571,10 @@ export class GameApp {
   }
 }
 
+/** True when the hole changes with time, so when a shot is struck matters. */
+const isTimed = (world: PlaySession['world']): boolean =>
+  world.gravitySpin !== undefined ||
+  world.hole.motion !== undefined ||
+  world.bodies.some((b) => b.motion !== undefined || b.pulse !== undefined) ||
+  world.zones.some((z) => z.pulse !== undefined) ||
+  world.switches.some((sw) => sw.holdTime !== undefined);

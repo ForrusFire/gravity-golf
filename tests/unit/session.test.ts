@@ -446,3 +446,44 @@ describe('replaying a run on a hole that moves', () => {
     }
   }, 120000);
 });
+
+describe('a shot that is abandoned', () => {
+  it('gives back the stars it picked up, so they can be collected again', () => {
+    // Nothing pulls and nothing slows the ball: it sails through the star and
+    // never settles, so the shot clock runs out.
+    const level: LevelDef = {
+      id: 'test-timeout-star',
+      name: 'Drift',
+      chapter: 1,
+      par: 3,
+      tee: V.vec(0, 0),
+      hole: { position: V.vec(0, 900) },
+      bounds: { minX: -5000, minY: -5000, maxX: 5000, maxY: 5000 },
+      boundsMode: 'wall',
+      ambientDrag: 0,
+      shotTimeout: 2,
+      stars: [V.vec(120, 0)],
+    };
+    const session = new PlaySession(level);
+    const events: SessionEvent[] = [];
+    const run = (seconds: number): void => {
+      for (let i = 0; i < seconds * 60; i++) events.push(...session.update(1 / 60));
+    };
+    run(0.2);
+    events.push(...session.shoot(V.vec(1, 0), 0.4));
+    run(6);
+
+    expect(events.some((e) => e.type === 'star')).toBe(true);
+    expect(events.some((e) => e.type === 'timeout')).toBe(true);
+    expect(events.some((e) => e.type === 'star-lost')).toBe(true);
+    expect(session.world.collectibles[0]!.collected).toBe(false);
+    expect(session.starCount).toBe(0);
+
+    // And it is there to be had on the next attempt.
+    while (!session.canShoot) run(0.1);
+    events.length = 0;
+    events.push(...session.shoot(V.vec(1, 0), 0.4));
+    run(1);
+    expect(events.some((e) => e.type === 'star')).toBe(true);
+  });
+});

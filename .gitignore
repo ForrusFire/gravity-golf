@@ -6,3 +6,4 @@ playwright-report
 .DS_Store
 # Local scratch scripts
 _*.mjs
+tests/unit/_dev*.test.ts
