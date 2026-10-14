@@ -1158,6 +1158,7 @@ export class GameApp {
         this.progress,
         CAMPAIGN_IDS,
         this.progress.isCompleted(dailyId(new Date())),
+        this.progress.completedCount(CAMPAIGN_IDS) > 0 ? this.continueLabel() : undefined,
       ),
       { showcase: true },
     );
@@ -1224,14 +1225,24 @@ export class GameApp {
     }
   }
 
-  private playNextUnfinished(): void {
-    const next =
+  /** The first unlocked hole not yet finished — where Continue picks up. */
+  private nextUnfinished(): LevelDef {
+    return (
       ALL_LEVELS.find(
         (level, index) =>
           !this.progress.isCompleted(level.id) &&
           isLevelUnlocked(index, ALL_LEVELS, this.progress),
-      ) ?? ALL_LEVELS[0]!;
-    this.playLevel(next);
+      ) ?? ALL_LEVELS[0]!
+    );
+  }
+
+  private continueLabel(): string {
+    const next = this.nextUnfinished();
+    return `Hole ${CAMPAIGN_IDS.indexOf(next.id) + 1} · ${next.name}`;
+  }
+
+  private playNextUnfinished(): void {
+    this.playLevel(this.nextUnfinished());
   }
 
   showLevels(): void {

@@ -113,6 +113,8 @@ export const titleScreen = (
   progress: ProgressStore,
   campaignIds: readonly string[],
   dailyDone = false,
+  /** Where Continue will pick up, once there is somewhere to continue from. */
+  nextHole?: string,
 ): HTMLElement => {
   const totalLevels = campaignIds.length;
   const completed = progress.completedCount(campaignIds);
@@ -130,6 +132,7 @@ export const titleScreen = (
       button(completed > 0 ? 'Continue' : 'Play', callbacks.onPlay, {
         class: 'btn--primary btn--hero',
       }),
+      nextHole ? el('span', { class: 'title__next', text: nextHole }) : null,
       button('Select hole', callbacks.onLevels),
       el('div', { class: 'title__grid' }, [
         button(dailyDone ? 'Daily challenge ✓' : 'Daily challenge', callbacks.onDaily),
