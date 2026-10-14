@@ -229,7 +229,7 @@ const paintGalaxy = (ctx: CanvasRenderingContext2D, x: number, y: number, rng: R
   ctx.scale(1, rng.range(0.35, 0.6));
   const hue = rng.bool() ? '200, 210, 255' : '255, 220, 200';
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-  halo.addColorStop(0, `rgba(${hue}, 0.35)`);
+  halo.addColorStop(0, `rgba(${hue}, 0.22)`);
   halo.addColorStop(0.25, `rgba(${hue}, 0.1)`);
   halo.addColorStop(1, `rgba(${hue}, 0)`);
   ctx.fillStyle = halo;
@@ -240,7 +240,7 @@ const paintGalaxy = (ctx: CanvasRenderingContext2D, x: number, y: number, rng: R
       const t = i / 70;
       const a = arm * Math.PI + t * 4.2 + rng.range(-0.18, 0.18);
       const d = r * (0.1 + t * 0.85);
-      ctx.globalAlpha = (1 - t) * 0.3;
+      ctx.globalAlpha = (1 - t) * 0.2;
       ctx.beginPath();
       ctx.arc(Math.cos(a) * d, Math.sin(a) * d, rng.range(0.5, 1.3), 0, TAU);
       ctx.fill();

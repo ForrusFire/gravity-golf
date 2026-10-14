@@ -63,6 +63,10 @@ export interface Scene {
   hintPath: Vec2[] | null;
   /** First hole, first shot: show a ghost finger pulling back to aim. */
   tutorial?: boolean;
+  /** The last attempt from this spot, drawn faintly while aiming again. */
+  previousAttempt?: Vec2[] | null;
+  /** Squash along a contact normal: positive flattens, negative stretches. */
+  ballSquash?: { normal: Vec2; amount: number };
   /** The ball is waiting for a shot: draw a beacon so it is easy to find. */
   ballReady?: boolean;
   /** A menu backdrop: no cup to point at. */
@@ -210,6 +214,10 @@ export class Renderer {
     // a record of a past one.
     if (scene.hintPath) this.drawHintPath(ctx, scene.hintPath, scene.time, options.palette);
 
+    if (scene.previousAttempt && scene.aim) {
+      this.drawPreviousAttempt(ctx, scene.previousAttempt, options.palette);
+    }
+
     // The ghost goes underneath, so it can never be mistaken for the live ball.
     if (scene.ghost) this.drawGhost(ctx, scene.ghost, scene.ballRadius, options.palette);
 
@@ -218,7 +226,20 @@ export class Renderer {
       if (scene.ballReady && !scene.aim && !options.reducedMotion) {
         this.drawBeacon(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
       }
-      this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
+      if (scene.ballSquash && Math.abs(scene.ballSquash.amount) > 0.005) {
+        const { normal, amount } = scene.ballSquash;
+        const p = scene.ballPosition;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(normal.y, normal.x));
+        ctx.scale(1 - amount, 1 + amount * 0.6);
+        ctx.rotate(-Math.atan2(normal.y, normal.x));
+        ctx.translate(-p.x, -p.y);
+        this.drawBall(ctx, p, scene.ballRadius, scene.time, scene.skin);
+        ctx.restore();
+      } else {
+        this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
+      }
     }
 
     if (scene.tutorial && !scene.aim) this.drawTutorial(ctx, scene, options.palette);
@@ -1920,6 +1941,31 @@ export class Renderer {
     ctx.arc(finger.x, finger.y, (pressed ? 14 : 18) * unit, 0, TAU);
     ctx.stroke();
 
+    ctx.restore();
+  }
+
+  /** A thin dashed line where the last shot from here went. */
+  private drawPreviousAttempt(ctx: CanvasRenderingContext2D, path: Vec2[], palette: Palette): void {
+    if (path.length < 2) return;
+    const unit = 1 / Math.max(this.camera.zoom, 0.35);
+    ctx.save();
+    ctx.strokeStyle = palette.textDim;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1.4 * unit;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([2 * unit, 6 * unit]);
+    ctx.beginPath();
+    ctx.moveTo(path[0]!.x, path[0]!.y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i]!.x, path[i]!.y);
+    ctx.stroke();
+    // Where it ended up.
+    const end = path[path.length - 1]!;
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.arc(end.x, end.y, 4 * unit, 0, TAU);
+    ctx.stroke();
     ctx.restore();
   }
 

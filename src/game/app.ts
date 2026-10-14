@@ -138,6 +138,15 @@ export class GameApp {
   private replayBadge: HTMLElement | null = null;
   /** Holes in a row finished under par this sitting. Not saved: a hot hand. */
   private streak = 0;
+  /**
+   * The path of the shot before this one, from where it was struck. Shown
+   * while aiming from that same spot again — after an undo or a lost ball —
+   * so the next attempt is an adjustment, not a fresh guess.
+   */
+  private lastShot: { levelId: string; start: Vec2; path: Vec2[] } | null = null;
+  private flightPath: { levelId: string; start: Vec2; path: Vec2[] } | null = null;
+  /** The ball flattening against whatever it just hit, for a beat. */
+  private squash: { normal: Vec2; amount: number; start: number } | null = null;
   private streakHole: string | null = null;
   /** Eased 0..1; 1 is full speed. Drives the approach slow-motion. */
   private timeScale = 1;
@@ -399,6 +408,8 @@ export class GameApp {
       this.trailClock -= TRAIL_INTERVAL;
       this.trail.push(session.ball.position);
       if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
+      const flight = this.flightPath;
+      if (flight && flight.path.length < 600) flight.path.push(session.ball.position);
     }
   }
 
@@ -539,6 +550,13 @@ export class GameApp {
           particles.impact(event.point, event.normal, event.speed, palette.trail);
           if (shakeAllowed && event.speed > 320) camera.shake(event.speed / 260, 0.25);
           if (event.speed > 320) buzz(10);
+          if (event.speed > 120) {
+            this.squash = {
+              normal: event.normal,
+              amount: clamp(event.speed / 1400, 0.08, 0.32),
+              start: performance.now(),
+            };
+          }
           break;
 
         case 'star':
@@ -595,12 +613,14 @@ export class GameApp {
           break;
 
         case 'settled':
+          this.keepFlightPath();
           this.trail = [];
           break;
 
         case 'died': {
           this.audio.play('death');
           if (this.screen === 'play') this.progress.countDeath();
+          this.keepFlightPath();
           particles.explosion(event.position, palette.danger);
           if (shakeAllowed) camera.shake(9, 0.45);
           this.renderer.flash(palette.danger, 0.16);
@@ -647,6 +667,11 @@ export class GameApp {
     this.previewCache = null;
     this.clearHintLine();
     this.trail = [];
+    this.flightPath = {
+      levelId: session.level.id,
+      start: session.ball.position,
+      path: [session.ball.position],
+    };
     this.handleSessionEvents(session.shoot(direction, power));
   }
 
@@ -946,6 +971,32 @@ export class GameApp {
     this.replayState = null;
     this.replayBadge?.remove();
     replay.back();
+  }
+
+  private keepFlightPath(): void {
+    if (this.flightPath && this.flightPath.path.length > 2) this.lastShot = this.flightPath;
+    this.flightPath = null;
+  }
+
+  /** The previous attempt's path, if the ball is back where it was struck. */
+  private previousAttempt(session: PlaySession): Vec2[] | null {
+    const last = this.lastShot;
+    if (!last || !session.canShoot || this.screen !== 'play') return null;
+    if (last.levelId !== session.level.id) return null;
+    return V.distance(last.start, session.ball.position) < 3 ? last.path : null;
+  }
+
+  private currentSquash(): Scene['ballSquash'] {
+    const squash = this.squash;
+    if (!squash || this.progress.settings.reducedMotion) return undefined;
+    const t = (performance.now() - squash.start) / 1000;
+    if (t > 0.22) {
+      this.squash = null;
+      return undefined;
+    }
+    // Snaps flat, then springs back with a small overshoot.
+    const k = Math.exp(-t * 22) * Math.cos(t * 40);
+    return { normal: squash.normal, amount: squash.amount * k };
   }
 
   private celebrate(amount: number): void {
@@ -1438,6 +1489,8 @@ export class GameApp {
           : null,
       hintPath: this.screen === 'play' ? (this.hintLine?.path ?? null) : null,
       ballReady: this.screen === 'play' && session.canShoot,
+      ballSquash: this.currentSquash(),
+      previousAttempt: this.previousAttempt(session),
       // Only for someone who has never sunk a ball, on the first hole, until
       // they take a shot.
       tutorial:
