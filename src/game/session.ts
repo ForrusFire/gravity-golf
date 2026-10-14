@@ -38,7 +38,7 @@ export type SessionState =
 
 export type SessionEvent =
   | { type: 'shot'; power: number; direction: Vec2; strokes: number }
-  | { type: 'bounce'; point: Vec2; normal: Vec2; speed: number; material: string }
+  | { type: 'bounce'; point: Vec2; normal: Vec2; speed: number; material: string; bodyId: string }
   | { type: 'star'; id: string; position: Vec2; total: number }
   | { type: 'star-lost'; id: string }
   | { type: 'portal'; from: Vec2; to: Vec2 }
@@ -551,6 +551,7 @@ export class PlaySession {
             normal: event.normal,
             speed: event.speed,
             material: event.material,
+            bodyId: event.bodyId,
           });
           break;
 

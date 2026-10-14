@@ -101,6 +101,8 @@ export class Renderer {
   private painter = new PlanetPainter();
   private flashState: { color: string; amount: number; start: number | null } | null = null;
   private fadeState: { duration: number; start: number | null } | null = null;
+  /** When each body was last struck, for its hit flash. */
+  private hits = new Map<string, number>();
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -1264,6 +1266,35 @@ export class Renderer {
       ctx.fill();
     }
 
+    // A struck body flashes along its edge; a bumper rings like a bell.
+    const hitAt = this.hits.get(body.id);
+    if (hitAt !== undefined) {
+      const t = (performance.now() - hitAt) / (style === 'bumper' ? 380 : 220);
+      if (t >= 1) {
+        this.hits.delete(body.id);
+      } else {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = colors.rim;
+        ctx.globalAlpha = (1 - t) * (style === 'bumper' ? 0.9 : 0.45);
+        ctx.lineWidth = (style === 'bumper' ? 6 : 3) / this.camera.zoom;
+        if (style === 'bumper' && shape.kind === 'circle') {
+          ctx.beginPath();
+          ctx.arc(center.x, center.y, radius * (1 + t * 0.35), 0, TAU);
+          ctx.stroke();
+          ctx.fillStyle = colors.rim;
+          ctx.globalAlpha = (1 - t) * 0.3;
+          ctx.beginPath();
+          ctx.arc(center.x, center.y, radius, 0, TAU);
+          ctx.fill();
+        } else {
+          this.tracePath(ctx, shape);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     // The edge the ball actually collides with. Painted worlds carry their own
     // rim light, so only a whisper of outline to keep the night side legible.
     ctx.globalAlpha = painted ? 0.28 : style === 'sun' ? 0.6 : 1;
@@ -2271,6 +2302,11 @@ export class Renderer {
     this.flashState = { color, amount, start: null };
   }
 
+  /** Marks a body as just struck, so it flashes. Strength is 0..1. */
+  hitBody(id: string, strength: number): void {
+    this.hits.set(id, performance.now() - (1 - clamp(strength, 0, 1)) * 120);
+  }
+
   /** Opens the next scene out of black: a cut between holes, not a jump. */
   fadeIn(duration = 0.5): void {
     this.fadeState = { duration, start: null };
@@ -2328,6 +2364,7 @@ export class Renderer {
   /** Clears cached per-body decoration. Call when switching levels. */
   resetDecor(): void {
     this.decorCache.clear();
+    this.hits.clear();
     this.painter.clear();
   }
 }

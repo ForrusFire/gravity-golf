@@ -553,6 +553,7 @@ export class GameApp {
         case 'bounce':
           this.audio.playImpact(event.material, event.speed);
           particles.impact(event.point, event.normal, event.speed, palette.trail);
+          if (event.speed > 60) this.renderer.hitBody(event.bodyId, event.speed / 500);
           if (shakeAllowed && event.speed > 320) camera.shake(event.speed / 260, 0.25);
           if (event.speed > 320) buzz(10);
           if (event.speed > 120) {
