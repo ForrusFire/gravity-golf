@@ -199,6 +199,9 @@ export const levelSelectScreen = (
     const starsHeld = progress.totalStars(campaignIds);
     const chapterLocked = starsHeld < chapter.starsRequired;
 
+    const chapterIds = chapter.levels.map((l) => l.id);
+    const chapterStars = progress.totalStars(chapterIds);
+    const chapterTotal = chapter.levels.length * 3;
     body.append(
       el('div', { class: 'levels__chapter-head' }, [
         el('h3', { text: `${chapter.index + 1}. ${chapter.name}` }),
@@ -208,6 +211,22 @@ export const levelSelectScreen = (
             ? `Locked — needs ${chapter.starsRequired} ★ (you have ${starsHeld})`
             : chapter.subtitle,
         }),
+        chapterLocked
+          ? null
+          : el(
+              'span',
+              {
+                class: 'levels__chapter-stars',
+                attrs: { 'aria-label': `${chapterStars} of ${chapterTotal} stars in this chapter` },
+              },
+              [
+                el('span', { text: `${chapterStars}/${chapterTotal} ★` }),
+                el('i', {
+                  class: 'levels__chapter-bar',
+                  attrs: { style: `--fill: ${(chapterStars / chapterTotal) * 100}%` },
+                }),
+              ],
+            ),
       ]),
     );
 

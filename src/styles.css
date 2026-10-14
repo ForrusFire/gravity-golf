@@ -1638,3 +1638,33 @@ body.loading::after {
   font-size: 0.88rem;
   animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.5s backwards;
 }
+
+.levels__chapter-stars {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.levels__chapter-bar {
+  position: relative;
+  display: inline-block;
+  width: 4.5rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.levels__chapter-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--fill);
+  background: linear-gradient(90deg, #ffb35a, #ffd25a);
+  border-radius: inherit;
+}
