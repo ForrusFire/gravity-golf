@@ -157,3 +157,52 @@ export const registerForgivenessGate = (slice: string, levels: LevelDef[]): void
     }
   });
 };
+
+/**
+ * Share of blind shots on `level` the shot clock has to abandon because the
+ * ball never came to rest.
+ */
+export const stallRate = (level: LevelDef, angles = 12, powers = [0.45, 0.85]): number => {
+  let stalls = 0;
+  let total = 0;
+  for (let a = 0; a < angles; a++) {
+    for (const power of powers) {
+      const session = new PlaySession(level);
+      for (let i = 0; i < 300 && !session.canShoot; i++) session.update(1 / 60);
+      session.shoot(V.fromAngle((a / angles) * TAU), power);
+      // A gate that measured nothing would pass everything.
+      if (session.strokes !== 1) throw new Error(`${level.id}: the blind shot was not taken`);
+      let abandoned = false;
+      // Coarse frames are fine here: the session steps at its own fixed rate.
+      for (let i = 0; i < 45 * 30 && !(session.canShoot || session.state === 'sunk'); i++) {
+        if (session.update(1 / 30).some((e) => e.type === 'timeout')) {
+          abandoned = true;
+          break;
+        }
+      }
+      total++;
+      if (abandoned) stalls++;
+    }
+  }
+  return stalls / total;
+};
+
+/**
+ * No hole keeps abandoning shots.
+ *
+ * A survey found a quarter of the holes where a large share of shots never
+ * came to rest — becalmed in open space, lying against a walled edge, or
+ * shoved round a planet by something else's pull — and the shot clock threw
+ * the stroke away. Each case was a physics rule or a level to fix; this keeps
+ * new ones from slipping in.
+ */
+export const registerStallGate = (slice: string, levels: LevelDef[]): void => {
+  describe(`shots come to rest (${slice})`, () => {
+    for (const level of levels) {
+      it(`${level.id} "${level.name}" rarely abandons a shot`, () => {
+        const rate = stallRate(level);
+        expect(rate, `${(rate * 100).toFixed(0)}% of blind shots never settled`).toBeLessThan(0.2);
+      }, 120_000);
+    }
+  });
+};

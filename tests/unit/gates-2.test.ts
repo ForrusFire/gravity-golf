@@ -2,6 +2,7 @@ import {
   SHARDS,
   registerForgivenessGate,
   registerReplayGate,
+  registerStallGate,
   registerStarGate,
   shardOf,
 } from './level-gates';
@@ -14,3 +15,4 @@ const LEVELS = shardOf(1);
 registerReplayGate(SLICE, LEVELS);
 registerStarGate(SLICE, LEVELS);
 registerForgivenessGate(SLICE, LEVELS);
+registerStallGate(SLICE, LEVELS);
