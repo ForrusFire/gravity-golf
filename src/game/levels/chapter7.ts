@@ -116,7 +116,9 @@ export const CHAPTER_7: LevelDef[] = [
     ambientDrag: 0.1,
     bodies: [
       planet('pull', vec(-220, 0), 74, 820, { range: 500 }),
-      planet('push', vec(220, 0), 74, -820, { range: 500, material: 'ice', style: 'ice' }),
+      // Fading out across the other core, so a ball resting on it is not
+      // shoved round its surface until the shot clock gives up.
+      planet('push', vec(220, 0), 74, -820, { range: 390, material: 'ice', style: 'ice' }),
       wall('cap-l', vec(-440, -300), vec(-120, -300), 12),
       wall('cap-r', vec(120, -300), vec(440, -300), 12),
       rock('pin', vec(0, 120), 26),
