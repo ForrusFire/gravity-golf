@@ -60,6 +60,11 @@ npm run dev      # play it at http://localhost:5173
   is standing and draws a shot worth playing, setting your aim to match. The hole
   still counts and still earns its medal — a hinted run just earns no style feats
   and is not kept as your ghost.
+- **Learn from the last try.** After an undo or a lost ball puts you back where
+  you struck from, the previous shot's path is drawn faintly while you aim, so
+  the next attempt is an adjustment rather than a guess.
+- **Get on a run.** Finish different holes under par back to back and the
+  results panel keeps count.
 - **Take a shot back** whenever you like. Restarting the hole was already free,
   so undo costs nothing but the tedium of replaying the shots before it.
 - **Watch it back.** The results panel can replay the hole from the tee, shot for
