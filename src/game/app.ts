@@ -28,7 +28,7 @@ import {
 import { holePositionAt } from '../physics/world';
 import { BALL_RADIUS, compileLevel, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
-import { dailyId, dailySeed } from './generator';
+import { dailyId, dailySeed, dailyStreak } from './generator';
 import { LevelGenerator } from './generator-client';
 import {
   linkForLevel,
@@ -1306,6 +1306,7 @@ export class GameApp {
         CAMPAIGN_IDS,
         this.progress.isCompleted(dailyId(new Date())),
         this.progress.completedCount(CAMPAIGN_IDS) > 0 ? this.continueLabel() : undefined,
+        dailyStreak((id) => this.progress.isCompleted(id), new Date()),
       ),
       { showcase: true },
     );

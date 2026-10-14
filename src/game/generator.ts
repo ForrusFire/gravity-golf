@@ -471,3 +471,21 @@ export const dailyId = (date: Date): string =>
     date.getUTCDate(),
   ).padStart(2, '0')}`;
 
+
+/**
+ * Days in a row the daily challenge has been finished, counting back from
+ * today — or from yesterday when today's is still to play, so a streak is not
+ * shown as broken before the day is out.
+ */
+export const dailyStreak = (isDone: (id: string) => boolean, today: Date): number => {
+  const day = 24 * 60 * 60 * 1000;
+  let cursor = today.getTime();
+  if (!isDone(dailyId(today))) cursor -= day;
+  let streak = 0;
+  // A year is plenty; it also bounds the loop against a pathological save.
+  while (streak < 366 && isDone(dailyId(new Date(cursor)))) {
+    streak++;
+    cursor -= day;
+  }
+  return streak;
+};

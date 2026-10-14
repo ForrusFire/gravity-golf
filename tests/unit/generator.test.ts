@@ -3,6 +3,7 @@ import * as V from '../../src/core/vec2';
 import {
   dailyId,
   dailySeed,
+  dailyStreak,
   generateLevel,
   type GeneratedLevel,
 } from '../../src/game/generator';
@@ -120,5 +121,19 @@ describe('generateLevel', () => {
     expect(compileLevel(round).switches).toHaveLength(compileLevel(level).switches.length);
     // Cached daily holes travel through localStorage as JSON.
     expect(validateLevel(round).filter((i) => i.severity === 'error')).toEqual([]);
+  });
+});
+
+describe('daily streak', () => {
+  const day = (iso: string) => new Date(`${iso}T12:00:00Z`);
+  it('counts back from today, or from yesterday while today is still to play', () => {
+    const done = new Set(['daily-2026-03-08', 'daily-2026-03-09', 'daily-2026-03-10']);
+    const isDone = (id: string) => done.has(id);
+    expect(dailyStreak(isDone, day('2026-03-10'))).toBe(3);
+    // Today not played yet: the run up to yesterday still stands.
+    expect(dailyStreak(isDone, day('2026-03-11'))).toBe(3);
+    // A missed day breaks it.
+    expect(dailyStreak(isDone, day('2026-03-12'))).toBe(0);
+    expect(dailyStreak(() => false, day('2026-03-12'))).toBe(0);
   });
 });

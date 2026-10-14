@@ -116,6 +116,8 @@ export const titleScreen = (
   dailyDone = false,
   /** Where Continue will pick up, once there is somewhere to continue from. */
   nextHole?: string,
+  /** Consecutive days of dailies finished. */
+  dailyStreak = 0,
 ): HTMLElement => {
   const totalLevels = campaignIds.length;
   const completed = progress.completedCount(campaignIds);
@@ -136,7 +138,10 @@ export const titleScreen = (
       nextHole ? el('span', { class: 'title__next', text: nextHole }) : null,
       button('Select hole', callbacks.onLevels),
       el('div', { class: 'title__grid' }, [
-        button(dailyDone ? 'Daily challenge ✓' : 'Daily challenge', callbacks.onDaily),
+        button(dailyDone ? 'Daily challenge ✓' : 'Daily challenge', callbacks.onDaily, {
+          class: dailyStreak >= 2 ? 'btn--streak' : '',
+          attrs: dailyStreak >= 2 ? { 'data-streak': `${dailyStreak}-day streak` } : {},
+        }),
         button('Round of the day', callbacks.onRound),
         button('Random hole', callbacks.onRandom),
         button('Scorecard', callbacks.onScorecard),
