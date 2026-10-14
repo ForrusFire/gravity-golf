@@ -1300,6 +1300,40 @@ export class Renderer {
     colors: BodyColors,
     time: number,
   ): void {
+    // Flames licking off the limb, each on its own flicker.
+    if (this.camera.zoom * r >= 10) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const flames = 26;
+      for (let i = 0; i < flames; i++) {
+        const a = (i / flames) * TAU + time * 0.08;
+        const reach = r * (0.18 + 0.14 * (0.5 + 0.5 * Math.sin(time * 2.3 + i * 1.7)));
+        const width = (TAU / flames) * 1.1;
+        const tip = { x: c.x + Math.cos(a) * (r + reach), y: c.y + Math.sin(a) * (r + reach) };
+        const grad = ctx.createRadialGradient(c.x, c.y, r * 0.9, c.x, c.y, r + reach);
+        grad.addColorStop(0, 'rgba(255, 190, 80, 0.26)');
+        grad.addColorStop(1, 'rgba(255, 90, 30, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(c.x + Math.cos(a - width) * r * 0.95, c.y + Math.sin(a - width) * r * 0.95);
+        ctx.quadraticCurveTo(
+          c.x + Math.cos(a - width * 0.3) * (r + reach * 0.7),
+          c.y + Math.sin(a - width * 0.3) * (r + reach * 0.7),
+          tip.x,
+          tip.y,
+        );
+        ctx.quadraticCurveTo(
+          c.x + Math.cos(a + width * 0.3) * (r + reach * 0.7),
+          c.y + Math.sin(a + width * 0.3) * (r + reach * 0.7),
+          c.x + Math.cos(a + width) * r * 0.95,
+          c.y + Math.sin(a + width) * r * 0.95,
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     const core = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
     core.addColorStop(0, '#fffbe8');
     core.addColorStop(0.35, lighten(colors.fill, 0.35));
@@ -1311,26 +1345,34 @@ export class Renderer {
     ctx.fill();
 
     if (this.camera.zoom * r < 10) return;
+    // Convection cells: soft bright patches drifting over the surface, and a
+    // few darker ones between them, so it churns rather than sits.
     ctx.save();
     ctx.beginPath();
     ctx.arc(c.x, c.y, r, 0, TAU);
     ctx.clip();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = 'rgba(255,220,140,0.16)';
-    for (let i = 0; i < 7; i++) {
-      const a = i * 2.39996 + time * (0.18 + (i % 3) * 0.07);
-      const d = r * (0.25 + ((i * 0.37) % 0.5));
-      const s = r * (0.16 + 0.05 * Math.sin(time * 2.1 + i));
+    for (let i = 0; i < 10; i++) {
+      const a = i * 2.39996 + time * (0.12 + (i % 3) * 0.05);
+      const d = r * (0.15 + ((i * 0.37) % 0.65));
+      const size = r * (0.22 + 0.06 * Math.sin(time * 1.6 + i));
+      const x = c.x + Math.cos(a) * d;
+      const y = c.y + Math.sin(a) * d;
+      const cell = ctx.createRadialGradient(x, y, 0, x, y, size);
+      const dark = i % 4 === 3;
+      cell.addColorStop(0, dark ? 'rgba(200, 60, 20, 0.28)' : 'rgba(255, 245, 190, 0.3)');
+      cell.addColorStop(1, dark ? 'rgba(200, 60, 20, 0)' : 'rgba(255, 245, 190, 0)');
+      ctx.fillStyle = cell;
       ctx.beginPath();
-      ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, s, 0, TAU);
+      ctx.arc(x, y, size, 0, TAU);
       ctx.fill();
     }
     ctx.restore();
   }
 
   /**
-   * A black hole: a swirling accretion disc and a thin photon ring. The motion
-   * is the warning — it reads as something that takes, not something to land on.
+   * A black hole: a swirling accretion disc, brighter on the side spinning
+   * toward the viewer, and a thin photon ring. The motion is the warning — it
+   * reads as something that takes, not something to land on.
    */
   private drawAccretion(
     ctx: CanvasRenderingContext2D,
@@ -1341,30 +1383,65 @@ export class Renderer {
   ): void {
     ctx.save();
     ctx.lineCap = 'round';
-    const bands = [
-      { scale: 1.22, width: 0.14, alpha: 0.85, speed: 1.6, dash: 0.9 },
-      { scale: 1.4, width: 0.09, alpha: 0.5, speed: 1.0, dash: 1.4 },
-      { scale: 1.58, width: 0.06, alpha: 0.28, speed: 0.6, dash: 2.0 },
-    ];
-    for (const band of bands) {
-      const rr = r * band.scale;
-      const dash = rr * band.dash;
-      ctx.globalAlpha = band.alpha;
-      ctx.strokeStyle = colors.rim;
-      ctx.lineWidth = Math.max(1.2, r * band.width);
-      ctx.setLineDash([dash, dash * 0.6]);
-      ctx.lineDashOffset = -time * band.speed * rr;
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, rr, 0, TAU);
-      ctx.stroke();
+    const spin = time * 1.3;
+    const conic = (ctx as { createConicGradient?: CanvasRenderingContext2D['createConicGradient'] })
+      .createConicGradient;
+    if (conic) {
+      ctx.globalCompositeOperation = 'lighter';
+      const bands = [
+        { scale: 1.22, width: 0.22, alpha: 0.95, rate: 1 },
+        { scale: 1.45, width: 0.14, alpha: 0.55, rate: 0.7 },
+        { scale: 1.62, width: 0.08, alpha: 0.3, rate: 0.45 },
+      ];
+      for (const band of bands) {
+        const grad = ctx.createConicGradient(spin * band.rate, c.x, c.y);
+        grad.addColorStop(0, withAlpha('#f3e6ff', band.alpha));
+        grad.addColorStop(0.18, withAlpha(colors.rim, band.alpha * 0.8));
+        grad.addColorStop(0.5, withAlpha(colors.rim, band.alpha * 0.15));
+        grad.addColorStop(0.82, withAlpha(colors.rim, band.alpha * 0.6));
+        grad.addColorStop(1, withAlpha('#f3e6ff', band.alpha));
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = Math.max(1.2, r * band.width);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r * band.scale, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      const bands = [
+        { scale: 1.22, width: 0.14, alpha: 0.85, speed: 1.6, dash: 0.9 },
+        { scale: 1.4, width: 0.09, alpha: 0.5, speed: 1.0, dash: 1.4 },
+        { scale: 1.58, width: 0.06, alpha: 0.28, speed: 0.6, dash: 2.0 },
+      ];
+      for (const band of bands) {
+        const rr = r * band.scale;
+        const dash = rr * band.dash;
+        ctx.globalAlpha = band.alpha;
+        ctx.strokeStyle = colors.rim;
+        ctx.lineWidth = Math.max(1.2, r * band.width);
+        ctx.setLineDash([dash, dash * 0.6]);
+        ctx.lineDashOffset = -time * band.speed * rr;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, rr, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
-    ctx.setLineDash([]);
+    // The shadow: space itself is darker right at the edge.
+    const shadow = ctx.createRadialGradient(c.x, c.y, r, c.x, c.y, r * 1.12);
+    shadow.addColorStop(0, 'rgba(0,0,0,0.9)');
+    shadow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * 1.12, 0, TAU);
+    ctx.fill();
     // The photon ring: the last light before the edge.
     ctx.globalAlpha = 0.9;
     ctx.strokeStyle = '#efe4ff';
-    ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.lineWidth = Math.max(1, r * 0.04);
     ctx.beginPath();
-    ctx.arc(c.x, c.y, r * 1.04, 0, TAU);
+    ctx.arc(c.x, c.y, r * 1.03, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }
