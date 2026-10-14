@@ -458,12 +458,31 @@ export class Renderer {
 
     switch (zone.kind) {
       case 'hazard': {
-        ctx.fillStyle = 'rgba(255, 70, 100, 0.14)';
+        ctx.fillStyle = 'rgba(255, 70, 100, 0.12)';
         ctx.fill();
+        // Crawling warning stripes inside, a glowing seam at the edge.
+        ctx.save();
+        ctx.clip();
+        const b = shapeBounds(zone.area);
+        const gap = 26;
+        const slide = (time * 18) % gap;
+        ctx.strokeStyle = 'rgba(255, 92, 114, 0.16)';
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        const span = b.maxX - b.minX + (b.maxY - b.minY);
+        for (let d = -span + slide; d < span; d += gap) {
+          ctx.moveTo(b.minX + d, b.minY);
+          ctx.lineTo(b.minX + d + (b.maxY - b.minY), b.maxY);
+        }
+        ctx.stroke();
+        ctx.restore();
+        this.tracePath(ctx, zone.area);
         ctx.strokeStyle = palette.danger;
-        ctx.lineWidth = 2 / this.camera.zoom;
-        ctx.setLineDash([9 / this.camera.zoom, 7 / this.camera.zoom]);
-        ctx.lineDashOffset = -time * 24;
+        ctx.globalAlpha *= 0.25;
+        ctx.lineWidth = 8 / this.camera.zoom;
+        ctx.stroke();
+        ctx.globalAlpha *= 3.2;
+        ctx.lineWidth = 1.8 / this.camera.zoom;
         ctx.stroke();
         break;
       }
@@ -471,10 +490,28 @@ export class Renderer {
         const c = shapeCenter(zone.area);
         const r = shapeRadius(zone.area);
         const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(r, 1));
-        grad.addColorStop(0, 'rgba(150, 110, 210, 0.34)');
-        grad.addColorStop(1, 'rgba(150, 110, 210, 0.05)');
+        grad.addColorStop(0, 'rgba(150, 110, 210, 0.3)');
+        grad.addColorStop(0.8, 'rgba(150, 110, 210, 0.12)');
+        grad.addColorStop(1, 'rgba(150, 110, 210, 0.02)');
         ctx.fillStyle = grad;
         ctx.fill();
+        // Slow-churning clouds inside: thick stuff to wade through.
+        ctx.clip();
+        const rng = new Rng(hashSeed(zone.id));
+        for (let i = 0; i < 9; i++) {
+          const orbit = rng.range(0.1, 0.75) * r;
+          const a = rng.range(0, TAU) + time * rng.range(0.04, 0.12) * (i % 2 ? 1 : -1);
+          const size = rng.range(0.2, 0.4) * r;
+          const x = c.x + Math.cos(a) * orbit;
+          const y = c.y + Math.sin(a) * orbit;
+          const puff = ctx.createRadialGradient(x, y, 0, x, y, size);
+          puff.addColorStop(0, i % 3 === 0 ? 'rgba(255, 170, 230, 0.12)' : 'rgba(170, 140, 255, 0.14)');
+          puff.addColorStop(1, 'rgba(170, 140, 255, 0)');
+          ctx.fillStyle = puff;
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, TAU);
+          ctx.fill();
+        }
         break;
       }
       case 'wind':
@@ -488,21 +525,41 @@ export class Renderer {
       case 'vortex': {
         const c = shapeCenter(zone.area);
         const r = shapeRadius(zone.area);
-        ctx.strokeStyle = 'rgba(199, 146, 255, 0.5)';
-        ctx.lineWidth = 2 / this.camera.zoom;
-        for (let i = 0; i < 3; i++) {
-          const phase = time * 0.9 * Math.sign(zone.swirl || 1) + (i * TAU) / 3;
-          ctx.beginPath();
-          for (let t = 0; t <= 1.001; t += 0.05) {
-            const radius = r * t;
-            const angle = phase + t * 5;
-            const x = c.x + Math.cos(angle) * radius;
-            const y = c.y + Math.sin(angle) * radius;
-            if (t === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        const dir = Math.sign(zone.swirl || 1);
+        const glow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(r, 1));
+        glow.addColorStop(0, 'rgba(199, 146, 255, 0.16)');
+        glow.addColorStop(1, 'rgba(199, 146, 255, 0)');
+        ctx.fillStyle = glow;
+        ctx.fill();
+        // Arms that thicken and brighten toward the rim, turning the way the
+        // vortex turns the ball.
+        ctx.strokeStyle = '#c792ff';
+        ctx.lineCap = 'round';
+        const arms = 4;
+        const steps = 18;
+        for (let i = 0; i < arms; i++) {
+          const phase = time * 0.9 * dir + (i * TAU) / arms;
+          for (let k = 0; k < steps; k++) {
+            const t0 = k / steps;
+            const t1 = (k + 1) / steps;
+            const point = (t: number) => {
+              const angle = phase + t * 4.5 * dir;
+              return { x: c.x + Math.cos(angle) * r * t, y: c.y + Math.sin(angle) * r * t };
+            };
+            const a = point(t0);
+            const b = point(t1);
+            ctx.globalAlpha = (on ? 1 : 0.3) * 0.6 * Math.sin(t1 * Math.PI) ;
+            ctx.lineWidth = (1 + t1 * 2.5) / this.camera.zoom;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
           }
-          ctx.stroke();
         }
+        ctx.globalAlpha = on ? 0.35 : 0.1;
+        ctx.lineWidth = 1.5 / this.camera.zoom;
+        this.tracePath(ctx, zone.area);
+        ctx.stroke();
         break;
       }
       case 'gravityScale': {
