@@ -461,7 +461,7 @@ test.describe('menus', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'How to play' }).click();
     await expect(page.getByRole('heading', { name: 'How to play' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Gravity' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Gravity', exact: true })).toBeVisible();
     // The colour language the later chapters depend on has to be documented.
     // Exact: "Violet is machinery" would otherwise match "Machinery" too.
     await expect(page.getByRole('heading', { name: 'Machinery', exact: true })).toBeVisible();
