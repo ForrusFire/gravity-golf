@@ -1610,3 +1610,19 @@ body.loading::after {
   box-shadow: 0 2px 8px rgba(255, 120, 60, 0.45);
   white-space: nowrap;
 }
+
+.menu__map {
+  display: block;
+  width: 100%;
+  max-width: 17rem;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  margin: 0.4rem auto 1rem;
+  border: 1px solid rgba(140, 160, 220, 0.16);
+}
+
+@media (max-height: 620px) {
+  .menu__map {
+    display: none;
+  }
+}

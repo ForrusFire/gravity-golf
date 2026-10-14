@@ -177,8 +177,8 @@ export const isLevelUnlocked = (
   return previous ? progress.isCompleted(previous.id) : false;
 };
 
-const levelMap = (level: LevelDef): HTMLCanvasElement => {
-  const canvas = el('canvas', { class: 'level-card__map', attrs: { 'aria-hidden': 'true' } });
+const levelMap = (level: LevelDef, className = 'level-card__map'): HTMLCanvasElement => {
+  const canvas = el('canvas', { class: className, attrs: { 'aria-hidden': 'true' } });
   drawThumbnail(canvas, level);
   return canvas;
 };
@@ -366,10 +366,18 @@ export interface PauseCallbacks {
   onShare?: () => void;
 }
 
-export const pauseScreen = (level: LevelDef, callbacks: PauseCallbacks): HTMLElement =>
+export const pauseScreen = (
+  level: LevelDef,
+  callbacks: PauseCallbacks,
+  strokes?: number,
+): HTMLElement =>
   el('div', { class: 'menu' }, [
     el('h2', { text: 'Paused' }),
-    el('p', { class: 'menu__sub', text: `${level.name} · Par ${level.par}` }),
+    el('p', {
+      class: 'menu__sub',
+      text: `${level.name} · Par ${level.par}${strokes !== undefined ? ` · ${strokes} stroke${strokes === 1 ? '' : 's'} so far` : ''}`,
+    }),
+    levelMap(level, 'menu__map'),
     el('div', { class: 'menu__buttons' }, [
       button('Resume', callbacks.onResume, { class: 'btn--primary' }),
       button('Restart hole', callbacks.onRetry),

@@ -1264,7 +1264,7 @@ export class GameApp {
         onSettings: () => this.showSettings('paused'),
         onTitle: () => this.showTitle(),
         onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
-      }),
+      }, session.strokes),
       { onEscape: () => this.resume() },
     );
   }
