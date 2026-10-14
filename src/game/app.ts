@@ -55,6 +55,8 @@ import {
   type ShotRecord,
 } from './session';
 import { launchConfetti } from '../ui/confetti';
+import { HoleEditor } from '../ui/editor';
+import { customToLevel, decodeCustomHole, encodeCustomHole, type CustomHole } from './custom';
 import { createShowcase, type Showcase } from './showcase';
 import { resolveSkin } from './skins';
 
@@ -65,6 +67,7 @@ type AppScreen =
   | 'paused'
   | 'results'
   | 'replay'
+  | 'editor'
   | 'settings'
   | 'help'
   | 'scorecard';
@@ -137,6 +140,8 @@ export class GameApp {
     back: () => void;
   } | null = null;
   private replayBadge: HTMLElement | null = null;
+  /** The hole editor, kept between visits so a draft survives a test play. */
+  private editor: HoleEditor | null = null;
   /** Holes in a row finished under par this sitting. Not saved: a hot hand. */
   private streak = 0;
   /**
@@ -231,6 +236,16 @@ export class GameApp {
     }
     if (link.kind === 'round') {
       this.playRound(link.seed);
+      return;
+    }
+    if (link.kind === 'custom') {
+      const hole = decodeCustomHole(link.code);
+      if (!hole) {
+        this.showTitle();
+        this.hud.showToast('That hole link is damaged', 2.6, 'bad');
+        return;
+      }
+      this.playLevel(customToLevel(hole));
       return;
     }
     await this.playGenerated(
@@ -328,6 +343,7 @@ export class GameApp {
     const rect = this.container.getBoundingClientRect();
     this.renderer.resize(rect.width || window.innerWidth, rect.height || window.innerHeight);
     if (this.session) this.refitCamera();
+    if (this.screen === 'editor') this.editor?.frame();
   };
 
   private handleVisibility = (): void => {
@@ -699,9 +715,10 @@ export class GameApp {
   }
 
   playLevel(level: LevelDef): void {
+    this.editor?.detach();
     this.session = new PlaySession(level);
     this.syncUrl(level);
-    if (!this.round) this.progress.countAttempt(level.id);
+    if (!this.round && level.id !== 'custom') this.progress.countAttempt(level.id);
     this.screen = 'play';
     this.overlay.hide();
     this.hud.setVisible(true);
@@ -865,7 +882,7 @@ export class GameApp {
     const wasComplete = this.campaignComplete();
     // A round is its own score: its holes do not touch the campaign's records,
     // so a round cannot unlock locked holes, bank stars or swap ghosts.
-    if (!this.round) this.progress.submit(result);
+    if (!this.round && result.levelId !== 'custom') this.progress.submit(result);
     const justFinished = !wasComplete && this.campaignComplete();
     const upcoming = nextLevel(result.levelId);
 
@@ -911,7 +928,8 @@ export class GameApp {
             streak,
             onNext: () => upcoming && this.playLevel(upcoming),
             onRetry: () => this.playLevel(session.level),
-            onLevels: () => this.showLevels(),
+            onLevels: () => this.leaveHole(session.level),
+            levelsLabel: session.level.id === 'custom' ? 'Edit this hole' : undefined,
             onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
             onReplay:
               result.shots.length > 0
@@ -1048,6 +1066,52 @@ export class GameApp {
     return { normal: squash.normal, amount: squash.amount * k };
   }
 
+  /** Where "back to holes" goes: the editor for a custom hole, else the list. */
+  private leaveHole(level: LevelDef): void {
+    const custom = (level as LevelDef & { custom?: CustomHole }).custom;
+    if (custom) this.showEditor(custom);
+    else this.showLevels();
+  }
+
+  /** Opens the hole editor, on `hole` when given, otherwise on the draft. */
+  showEditor(hole?: CustomHole): void {
+    this.screen = 'editor';
+    this.session = null;
+    this.round = null;
+    this.ghost = null;
+    this.clearUrl();
+    this.overlay.hide();
+    this.hud.setVisible(false);
+    if (!this.editor || hole) {
+      this.editor?.dispose();
+      this.editor = new HoleEditor(
+        {
+          canvas: this.renderer.canvas,
+          camera: this.renderer.camera,
+          onTest: (custom) => this.playLevel(customToLevel(custom)),
+          onShare: (custom) => void this.shareCustom(custom),
+          onExit: () => this.showTitle(),
+          onClick: () => this.audio.play('click'),
+        },
+        hole,
+      );
+    }
+    this.renderer.resetDecor();
+    this.renderer.particles.clear();
+    this.editor.attach(this.container);
+    this.editor.frame();
+  }
+
+  private async shareCustom(hole: CustomHole): Promise<void> {
+    const url = shareUrl({ kind: 'custom', code: encodeCustomHole(hole) }, window.location);
+    try {
+      await navigator.clipboard.writeText(url);
+      this.editor?.status('Link copied — anyone with it can play this hole', 'good');
+    } catch {
+      this.editor?.status(url);
+    }
+  }
+
   private celebrate(amount: number): void {
     if (this.progress.settings.reducedMotion) return;
     launchConfetti(this.container, amount);
@@ -1157,7 +1221,7 @@ export class GameApp {
       pauseScreen(session.level, {
         onResume: () => this.resume(),
         onRetry: () => this.retry(),
-        onLevels: () => this.showLevels(),
+        onLevels: () => this.leaveHole(session.level),
         onSettings: () => this.showSettings('paused'),
         onTitle: () => this.showTitle(),
         onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
@@ -1175,6 +1239,7 @@ export class GameApp {
   }
 
   showTitle(): void {
+    this.editor?.detach();
     this.screen = 'title';
     this.session = null;
     this.clearUrl();
@@ -1196,6 +1261,7 @@ export class GameApp {
           // Today's round, the same nine for everybody — the shareable one. A
           // fresh random round is one button away on the card at the end.
           onRound: () => this.playRound(dailyRoundSeed(new Date())),
+          onCreate: () => this.showEditor(),
         },
         this.progress,
         CAMPAIGN_IDS,
@@ -1288,6 +1354,7 @@ export class GameApp {
   }
 
   showLevels(): void {
+    this.editor?.detach();
     this.screen = 'levels';
     this.session = null;
     this.clearUrl();
@@ -1452,6 +1519,9 @@ export class GameApp {
           } else if (this.screen === 'paused') {
             event.preventDefault();
             this.resume();
+          } else if (this.screen === 'editor') {
+            event.preventDefault();
+            this.showTitle();
           }
           break;
         case 'KeyR':
@@ -1511,6 +1581,31 @@ export class GameApp {
       reducedMotion: this.progress.settings.reducedMotion,
       aimAssist: this.progress.settings.aimAssist,
     };
+
+    if (!session && this.screen === 'editor' && this.editor) {
+      const editor = this.editor;
+      const t = performance.now() / 1000;
+      editor.world.time = 0;
+      this.renderer.draw(
+        {
+          world: editor.world,
+          ballPosition: { x: editor.hole.tee[0], y: editor.hole.tee[1] },
+          ballRadius: BALL_RADIUS,
+          ballVisible: true,
+          trail: [],
+          aim: null,
+          time: t,
+          levelId: 'custom',
+          skin: resolveSkin(this.progress.settings.ballSkin, this.progress.totalStars(CAMPAIGN_IDS)),
+          ghost: null,
+          hintPath: null,
+          backdrop: true,
+          overlay: (ctx, zoom) => editor.drawOverlay(ctx, zoom),
+        },
+        options,
+      );
+      return;
+    }
 
     if (!session) {
       // Menus sit over a little living system rather than a blank sky.

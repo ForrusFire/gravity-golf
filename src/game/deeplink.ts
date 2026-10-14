@@ -1,3 +1,5 @@
+import { encodeCustomHole, type CustomHole } from './custom';
+
 /**
  * Sharable links to a specific hole.
  *
@@ -14,7 +16,9 @@
 export type DeepLink =
   | { kind: 'campaign'; levelId: string }
   | { kind: 'generated'; seed: number }
-  | { kind: 'round'; seed: number };
+  | { kind: 'round'; seed: number }
+  /** A player-made hole, carried whole in the link. See `custom.ts`. */
+  | { kind: 'custom'; code: string };
 
 /** Campaign ids are `c<chapter>-<hole>`; anything else is not one of ours. */
 const CAMPAIGN_ID = /^c\d{1,3}-\d{1,3}$/;
@@ -30,6 +34,9 @@ export const parseDeepLink = (search: string): DeepLink | null => {
 
   const hole = params.get('hole');
   if (hole && CAMPAIGN_ID.test(hole)) return { kind: 'campaign', levelId: hole };
+
+  const custom = params.get('custom');
+  if (custom && /^[A-Za-z0-9_-]{8,6000}$/.test(custom)) return { kind: 'custom', code: custom };
 
   const round = parseSeed(params.get('round'));
   if (round !== null) return { kind: 'round', seed: round };
@@ -51,6 +58,7 @@ const parseSeed = (raw: string | null): number | null => {
 export const formatDeepLink = (link: DeepLink | null): string => {
   if (!link) return '';
   if (link.kind === 'campaign') return `?hole=${link.levelId}`;
+  if (link.kind === 'custom') return `?custom=${link.code}`;
   return link.kind === 'round' ? `?round=${link.seed}` : `?seed=${link.seed}`;
 };
 
@@ -64,8 +72,10 @@ export const formatDeepLink = (link: DeepLink | null): string => {
 export const linkForLevel = (level: {
   id: string;
   seed?: number;
+  custom?: CustomHole;
 }): DeepLink | null => {
   if (CAMPAIGN_ID.test(level.id)) return { kind: 'campaign', levelId: level.id };
+  if (level.custom) return { kind: 'custom', code: encodeCustomHole(level.custom) };
   if (typeof level.seed === 'number' && Number.isSafeInteger(level.seed)) {
     return { kind: 'generated', seed: level.seed };
   }

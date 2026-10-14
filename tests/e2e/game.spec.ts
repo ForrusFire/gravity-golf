@@ -1007,3 +1007,58 @@ test.describe('state mechanics', () => {
       .toBeLessThan(5);
   });
 });
+
+test.describe('hole editor', () => {
+  test('makes a hole, test-plays it, and comes back to edit it', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.locator('.editor')).toBeVisible();
+
+    // Drop a bumper in the middle of the board.
+    await page.getByRole('button', { name: 'Bumper', exact: true }).click();
+    const box = (await page.locator('canvas').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+    await page.getByRole('button', { name: 'Test', exact: true }).click();
+    await expect.poll(async () => (await sessionState(page))?.levelId).toBe('custom');
+    await expect(page.locator('.editor')).toHaveCount(0);
+
+    // Out through the pause menu: back to the editor, with the bumper kept.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Select hole' }).click();
+    await expect(page.locator('.editor')).toBeVisible();
+    const items = await page.evaluate(
+      () =>
+        (window.gravityGolf as unknown as { editor: { hole: { items: Array<{ t: string }> } } }).editor
+          .hole.items,
+    );
+    expect(items.some((item) => item.t === 'bumper')).toBe(true);
+
+    // And the draft is still there after a reload.
+    await page.reload();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    const kept = await page.evaluate(
+      () =>
+        (window.gravityGolf as unknown as { editor: { hole: { items: Array<{ t: string }> } } }).editor
+          .hole.items,
+    );
+    expect(kept.some((item) => item.t === 'bumper')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('a shared custom link opens the hole it carries', async ({ page }) => {
+    const { emptyCustomHole, encodeCustomHole } = await import('../../src/game/custom');
+    const hole = emptyCustomHole();
+    hole.name = 'Linked Up';
+    hole.par = 4;
+    await page.goto(`/?custom=${encodeCustomHole(hole)}`);
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10_000 }).toBe('custom');
+    await expect(page.locator('.hud__level')).toHaveText('Linked Up');
+  });
+
+  test('a damaged custom link falls back to the title', async ({ page }) => {
+    await page.goto('/?custom=notarealholeatall');
+    await expect(page.getByRole('button', { name: /^(Play|Continue)$/ })).toBeVisible();
+  });
+});

@@ -70,6 +70,8 @@ export interface Scene {
   ballSquash?: { normal: Vec2; amount: number };
   /** The ball is waiting for a shot: draw a beacon so it is easy to find. */
   ballReady?: boolean;
+  /** Extra drawing in world space, last, for tools such as the editor. */
+  overlay?: (ctx: CanvasRenderingContext2D, zoom: number) => void;
   /** A menu backdrop: no cup to point at. */
   backdrop?: boolean;
 }
@@ -252,6 +254,8 @@ export class Renderer {
     if (scene.aim && options.aimAssist > 0) {
       this.drawAim(ctx, scene.aim, scene.ballRadius, scene.time, options.palette);
     }
+
+    scene.overlay?.(ctx, this.camera.zoom);
 
     ctx.restore();
 

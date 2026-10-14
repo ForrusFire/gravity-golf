@@ -67,6 +67,12 @@ npm run dev      # play it at http://localhost:5173
   results panel keeps count.
 - **Take a shot back** whenever you like. Restarting the hole was already free,
   so undo costs nothing but the tedium of replaying the shots before it.
+- **Make your own.** *Create* on the title screen opens a hole editor: drag out
+  planets, moons, ice, sand, goo, suns, black holes, bumpers, rocks and walls,
+  drop up to three stars, move the tee and cup, set par, and test-play it. The
+  draft is kept between visits, and *Share* copies a link that carries the whole
+  hole — no server involved. Links are checked and clamped on the way in, so a
+  hand-edited one can only describe something the editor could have built.
 - **Watch it back.** The results panel can replay the hole from the tee, shot for
   shot. The physics is deterministic, so a replay is just the same shots played
   again — it is exactly what happened.
@@ -141,6 +147,7 @@ Every hole has a link. The address bar tracks whatever you are playing, and
 https://…/?hole=c7-4      a campaign hole
 https://…/?seed=1837291  a generated hole, rebuilt from its seed
 https://…/?round=4242    a nine-hole round
+https://…/?custom=eyJ2…  a hole made in the editor, carried whole
 ```
 
 Seed links work because generation is deterministic *and* verified — the same

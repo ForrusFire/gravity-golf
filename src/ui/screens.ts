@@ -106,6 +106,7 @@ export interface TitleCallbacks {
   onDaily(): void;
   onRandom(): void;
   onRound(): void;
+  onCreate(): void;
 }
 
 export const titleScreen = (
@@ -140,8 +141,9 @@ export const titleScreen = (
         button('Random hole', callbacks.onRandom),
         button('Scorecard', callbacks.onScorecard),
       ]),
-      el('div', { class: 'title__grid' }, [
+      el('div', { class: 'title__grid title__grid--3' }, [
         button('How to play', callbacks.onHelp, { class: 'btn--ghost' }),
+        button('Create', callbacks.onCreate, { class: 'btn--ghost' }),
         button('Settings', callbacks.onSettings, { class: 'btn--ghost' }),
       ]),
     ]),
@@ -266,6 +268,8 @@ export interface ResultsCallbacks {
   onShare?: () => void;
   /** Watch the hole played back from the tee. */
   onReplay?: () => void;
+  /** Overrides "Back to holes", e.g. for a hole made in the editor. */
+  levelsLabel?: string;
   hasNext: boolean;
   isNewBest: boolean;
   previousBest: number | null;
@@ -327,7 +331,7 @@ export const resultsScreen = (
     el('div', { class: 'results__buttons' }, [
       callbacks.hasNext
         ? button('Next hole', callbacks.onNext, { class: 'btn--primary' })
-        : button('Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
+        : button(callbacks.levelsLabel ?? 'Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
       el('div', { class: 'results__row' }, [
         button('Retry', callbacks.onRetry),
         callbacks.onReplay ? button('Watch replay', callbacks.onReplay) : null,
