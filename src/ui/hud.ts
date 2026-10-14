@@ -62,7 +62,8 @@ export class Hud {
     this.introKicker = el('span', { class: 'hud__intro-kicker' });
     this.introName = el('span', { class: 'hud__intro-name' });
     this.introPar = el('span', { class: 'hud__intro-par' });
-    this.intro = el('div', { class: 'hud__intro', attrs: { 'aria-hidden': 'true' } }, [
+    // A live region, so the hole is announced as well as shown.
+    this.intro = el('div', { class: 'hud__intro', attrs: { role: 'status', 'aria-live': 'polite' } }, [
       this.introKicker,
       this.introName,
       this.introPar,

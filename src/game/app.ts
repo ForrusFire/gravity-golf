@@ -1052,7 +1052,6 @@ export class GameApp {
     const hole = round.holes[round.index];
     if (!hole) return;
     this.playLevel(hole.level);
-    this.hud.showToast(`Round · hole ${round.index + 1} of ${round.holes.length}`, 2.2);
   }
 
   /** Records the hole just finished and moves the round on. */
