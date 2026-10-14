@@ -564,30 +564,47 @@ export class Renderer {
     const bounds = shapeBounds(area);
     const dir = V.normalize(force);
     if (dir.x === 0 && dir.y === 0) return;
-    const spacing = 42;
-    const drift = ((time * 60) % spacing) - spacing;
+    const lanes = 54;
+    const period = 140;
+    const speed = 70;
 
     ctx.strokeStyle = palette.accent;
-    ctx.globalAlpha = 0.5;
     ctx.lineWidth = 2 / this.camera.zoom;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     const perp = V.perp(dir);
     const cx = (bounds.minX + bounds.maxX) / 2;
     const cy = (bounds.minY + bounds.maxY) / 2;
     const span = Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2;
 
+    // Streaks of air on staggered lanes, each with a small chevron at its
+    // head: the stream reads as moving, and as moving *that* way, without a
+    // wallpaper of arrows.
     const head = 5;
-    for (let lane = -span; lane <= span; lane += spacing) {
-      for (let along = -span + drift; along <= span; along += spacing) {
+    let laneIndex = 0;
+    for (let lane = -span; lane <= span; lane += lanes, laneIndex++) {
+      const h = Math.sin(laneIndex * 91.7) * 43758.5453;
+      const offset = (h - Math.floor(h)) * period;
+      const length = 30 + ((h * 3.1) % 1) * 26;
+      const drift = ((time * speed + offset) % period) - period;
+      for (let along = -span + drift; along <= span; along += period) {
         const x = cx + dir.x * along + perp.x * lane;
         const y = cy + dir.y * along + perp.y * lane;
-        const tipX = x + dir.x * 14;
-        const tipY = y + dir.y * 14;
+        const tipX = x + dir.x * length;
+        const tipY = y + dir.y * length;
+        const grad = ctx.createLinearGradient(x, y, tipX, tipY);
+        grad.addColorStop(0, withAlpha(palette.accent, 0));
+        grad.addColorStop(1, withAlpha(palette.accent, 0.6));
+        ctx.strokeStyle = grad;
+        ctx.globalAlpha = 1;
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(tipX, tipY);
-        // Arrowheads: the tick alone shows the axis but not which way it pushes.
+        ctx.stroke();
+        ctx.strokeStyle = palette.accent;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
         ctx.moveTo(tipX - dir.x * head + perp.x * head, tipY - dir.y * head + perp.y * head);
         ctx.lineTo(tipX, tipY);
         ctx.lineTo(tipX - dir.x * head - perp.x * head, tipY - dir.y * head - perp.y * head);
