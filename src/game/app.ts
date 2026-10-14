@@ -758,6 +758,7 @@ export class GameApp {
     const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
     this.flybyTimer = flyby;
     this.renderer.prewarm(this.session.world, this.baseZoom);
+    this.audio.setMood(level.chapter);
     if (!this.progress.settings.reducedMotion) this.renderer.fadeIn(0.5);
     if (flyby > 0) {
       const bounds = this.session.world.bounds;
@@ -1279,6 +1280,7 @@ export class GameApp {
 
   showTitle(): void {
     this.editor?.detach();
+    this.audio.setMood(0);
     this.screen = 'title';
     this.session = null;
     this.clearUrl();

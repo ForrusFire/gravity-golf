@@ -338,26 +338,42 @@ export class AudioEngine {
 
   /* -------------------------------------------------------------- music */
 
+  /** Which chapter's key and progression the music is in. */
+  private mood = 0;
+
   /**
-   * A slow generative pad. Each tick plays one note from a fixed pentatonic
-   * set, so it never resolves and never grates.
+   * Sets the music's key and progression, so each chapter has a colour of its
+   * own. Takes effect at the next chord change rather than mid-phrase.
+   */
+  setMood(index: number): void {
+    this.mood = Math.max(0, Math.floor(index));
+  }
+
+  /**
+   * A slow generative pad over a four-chord progression. Melody notes are drawn
+   * from the chord under them, with a soft bass on each change — so it has
+   * somewhere to go, but nothing in it can clash.
    */
   startMusic(): void {
     if (!this.ctx || this.musicTimer || this.failed) return;
-    const scale = [196, 220, 261.63, 293.66, 329.63, 392, 440];
     this.musicTimer = setInterval(() => {
       if (!this.ctx || this.musicVolume <= 0.001) return;
-      const note = scale[this.rng.int(0, scale.length - 1)]!;
-      const octave = this.rng.bool(0.25) ? 2 : 1;
-      this.tone(note * octave, 3.2, {
-        type: 'sine',
-        gain: 0.08,
-        attack: 0.9,
-        bus: this.musicBus,
-      });
-      // Every fourth tick adds a low root for a sense of pulse.
+      const mood = MOODS[this.mood % MOODS.length]!;
+      const bar = Math.floor(this.musicStep / 4);
+      const chord = mood.progression[bar % mood.progression.length]!;
+      const key = 196 * Math.pow(2, mood.transpose / 12);
+      const at = (semitones: number) => key * Math.pow(2, semitones / 12);
+
+      // A chord tone, sometimes up an octave; now and then a rest, for air.
+      if (!this.rng.bool(0.18)) {
+        const tone = chord[this.rng.int(0, chord.length - 1)]!;
+        const octave = this.rng.bool(0.3) ? 12 : 0;
+        this.tone(at(tone + octave), 3.2, { type: 'sine', gain: 0.075, attack: 0.9, bus: this.musicBus });
+      }
       if (this.musicStep % 4 === 0) {
-        this.tone(98, 4.5, { type: 'sine', gain: 0.09, attack: 1.2, bus: this.musicBus });
+        // The root, low, as the chord arrives.
+        this.tone(at(chord[0]! - 12), 5.2, { type: 'sine', gain: 0.085, attack: 1.4, bus: this.musicBus });
+        this.tone(at(chord[1]! - 12), 5.2, { type: 'triangle', gain: 0.025, attack: 1.8, bus: this.musicBus });
       }
       this.musicStep++;
     }, 1600);
@@ -380,3 +396,22 @@ export class AudioEngine {
     this.ctx = null;
   }
 }
+
+/**
+ * Keys and progressions, one per chapter in turn. Chords are semitones above
+ * the key: major and minor triads, voiced so the melody sits in a gentle band.
+ */
+const MOODS: Array<{ transpose: number; progression: number[][] }> = [
+  // I – vi – IV – V: the warm one to start on.
+  { transpose: 0, progression: [[0, 4, 7], [9, 12, 16], [5, 9, 12], [7, 11, 14]] },
+  // i – VI – III – VII: darker, for hazards.
+  { transpose: -3, progression: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]] },
+  // I – IV – vi – V.
+  { transpose: 2, progression: [[0, 4, 7], [5, 9, 12], [9, 12, 16], [7, 11, 14]] },
+  // i – iv – VI – v: a slow minor drift.
+  { transpose: -5, progression: [[0, 3, 7], [5, 8, 12], [8, 12, 15], [7, 10, 14]] },
+  // I – V – vi – IV.
+  { transpose: 5, progression: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]] },
+  // Suspended: open fourths and fifths, for the stranger chapters.
+  { transpose: -2, progression: [[0, 5, 7], [5, 10, 12], [7, 12, 14], [3, 8, 10]] },
+];
