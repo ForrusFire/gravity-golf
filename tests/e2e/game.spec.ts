@@ -193,6 +193,45 @@ test.describe('playing a hole', () => {
     expect(saved.levels?.['c1-1']?.completed).toBe(true);
   });
 
+  test('a finished hole can be watched back and returns to its results', async ({ page }) => {
+    const errors = consoleErrors(page);
+    await startGame(page);
+    // One real shot, so there is something to replay, then drop the ball in.
+    await shoot(page, 1, -0.2, 0.3);
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(1);
+    await page.evaluate(() => {
+      const app = window.gravityGolf as unknown as {
+        session: {
+          ball: { position: { x: number; y: number }; velocity: { x: number; y: number } };
+          world: { hole: { position: { x: number; y: number }; radius: number } };
+        } | null;
+      };
+      const s = app.session!;
+      s.ball.position = {
+        x: s.world.hole.position.x,
+        y: s.world.hole.position.y - s.world.hole.radius * 0.4,
+      };
+      s.ball.velocity = { x: 0, y: 0 };
+    });
+    await expect(page.locator('.results')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'Watch replay' }).click();
+    await expect(page.locator('.replay-badge')).toBeVisible();
+    await expect(page.locator('.results')).toBeHidden();
+    // The replayed shot really is played: a stroke on the clock.
+    await expect.poll(async () => (await sessionState(page))?.strokes, { timeout: 5000 }).toBe(1);
+
+    await page.keyboard.press('Space');
+    await expect(page.locator('.replay-badge')).toHaveCount(0);
+    await expect(page.locator('.results')).toBeVisible();
+    // Watching does not count as playing.
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('gravity-golf/progress') ?? '{}'),
+    );
+    expect(saved.levels?.['c1-1']?.completed).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   test('undo takes back a shot and is disabled with nothing to undo', async ({ page }) => {
     await startGame(page);
     const undo = page.getByRole('button', { name: 'Take back last shot' });

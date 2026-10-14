@@ -264,6 +264,8 @@ export interface ResultsCallbacks {
   onLevels(): void;
   /** Absent when the hole cannot be rebuilt from a link. */
   onShare?: () => void;
+  /** Watch the hole played back from the tee. */
+  onReplay?: () => void;
   hasNext: boolean;
   isNewBest: boolean;
   previousBest: number | null;
@@ -318,7 +320,10 @@ export const resultsScreen = (
       callbacks.hasNext
         ? button('Next hole', callbacks.onNext, { class: 'btn--primary' })
         : button('Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
-      button('Retry', callbacks.onRetry),
+      el('div', { class: 'results__row' }, [
+        button('Retry', callbacks.onRetry),
+        callbacks.onReplay ? button('Watch replay', callbacks.onReplay) : null,
+      ]),
       callbacks.onShare
         ? button('Share this hole', callbacks.onShare, { class: 'btn--ghost' })
         : null,

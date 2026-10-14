@@ -46,7 +46,13 @@ import {
 } from './round';
 import { serializeBoardState } from './hint';
 import { ProgressStore, type Settings } from './progress';
-import { FEATS, PlaySession, type HoleResult, type SessionEvent } from './session';
+import {
+  FEATS,
+  PlaySession,
+  type HoleResult,
+  type SessionEvent,
+  type ShotRecord,
+} from './session';
 import { launchConfetti } from '../ui/confetti';
 import { createShowcase, type Showcase } from './showcase';
 import { resolveSkin } from './skins';
@@ -57,6 +63,7 @@ type AppScreen =
   | 'play'
   | 'paused'
   | 'results'
+  | 'replay'
   | 'settings'
   | 'help'
   | 'scorecard';
@@ -118,6 +125,17 @@ export class GameApp {
 
   private ghost: GhostRunner | null = null;
   private showcase: Showcase | null = null;
+  /** A finished hole being played back, shot for shot, behind no panel. */
+  private replayState: {
+    shots: ShotRecord[];
+    index: number;
+    /** Seconds before the next shot is fired, so each one reads. */
+    wait: number;
+    /** Counts down once the ball has dropped, then hands back. */
+    endIn: number | null;
+    back: () => void;
+  } | null = null;
+  private replayBadge: HTMLElement | null = null;
   /** Eased 0..1; 1 is full speed. Drives the approach slow-motion. */
   private timeScale = 1;
   /** Counts down at level start while the camera shows the hole. */
@@ -160,6 +178,7 @@ export class GameApp {
         onInteract: () => {
           // Any input means the player is ready; do not make them wait.
           this.flybyTimer = 0;
+          if (this.screen === 'replay') this.endReplay();
         },
       },
       { aimMode: this.progress.settings.aimMode },
@@ -334,6 +353,8 @@ export class GameApp {
       if (this.flybyTimer > 0) this.flybyTimer = Math.max(0, this.flybyTimer - dt);
     }
 
+    if (session && this.screen === 'replay') this.updateReplay(dt, session);
+
     if (!settings.reducedMotion) this.renderer.starfield.update(dt);
     this.renderer.particles.update(dt);
     this.renderer.camera.update(dt);
@@ -485,7 +506,7 @@ export class GameApp {
       switch (event.type) {
         case 'shot':
           this.audio.play('putt', event.power);
-          this.progress.countShot();
+          if (this.screen === 'play') this.progress.countShot();
           particles.emit(session.ball.position, {
             count: 10,
             color: palette.accent,
@@ -576,7 +597,7 @@ export class GameApp {
 
         case 'died': {
           this.audio.play('death');
-          this.progress.countDeath();
+          if (this.screen === 'play') this.progress.countDeath();
           particles.explosion(event.position, palette.danger);
           if (shakeAllowed) camera.shake(9, 0.45);
           this.renderer.flash(palette.danger, 0.16);
@@ -606,7 +627,8 @@ export class GameApp {
           buzz([18, 40, 18, 40, 50]);
           const feat = event.result.feats[0];
           if (feat) this.hud.showToast(FEATS[feat].label, 2.4, 'good');
-          this.finishHole();
+          if (this.screen !== 'replay') this.finishHole();
+          else if (this.replayState) this.replayState.endIn = 1.8;
           break;
         }
       }
@@ -821,22 +843,100 @@ export class GameApp {
         return;
       }
 
-      this.overlay.show(
-        resultsScreen(result, session.level.name, {
-          hasNext: upcoming !== undefined,
-          isNewBest,
-          previousBest,
-          onNext: () => upcoming && this.playLevel(upcoming),
-          onRetry: () => this.playLevel(session.level),
-          onLevels: () => this.showLevels(),
-          onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
-        }),
-        {},
-      );
+      const showResults = (): void => {
+        this.session = session;
+        this.screen = 'results';
+        this.hud.setVisible(false);
+        this.overlay.show(
+          resultsScreen(result, session.level.name, {
+            hasNext: upcoming !== undefined,
+            isNewBest,
+            previousBest,
+            onNext: () => upcoming && this.playLevel(upcoming),
+            onRetry: () => this.playLevel(session.level),
+            onLevels: () => this.showLevels(),
+            onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
+            onReplay:
+              result.shots.length > 0
+                ? () => this.startReplay(session.level, result.shots, showResults)
+                : undefined,
+          }),
+          {},
+        );
+      };
+      showResults();
       // Confetti for the finishes worth throwing it for.
       if (result.medal === 'ace') this.celebrate(1.4);
       else if (result.medal === 'gold' && isNewBest) this.celebrate(0.8);
     }, 900);
+  }
+
+  /**
+   * Plays a finished hole back from the tee. The simulation is deterministic,
+   * so feeding it the same shots reproduces the run exactly — no recording of
+   * positions needed.
+   */
+  private startReplay(level: LevelDef, shots: readonly ShotRecord[], back: () => void): void {
+    if (shots.length === 0) return;
+    this.session = new PlaySession(level);
+    this.replayState = { shots: shots.map((s) => ({ ...s })), index: 0, wait: 0.7, endIn: null, back };
+    this.screen = 'replay';
+    this.overlay.hide();
+    this.hud.setVisible(false);
+    this.trail = [];
+    this.aimState = null;
+    this.ghost = null;
+    this.clearHintLine();
+    this.flybyTimer = 0;
+    this.timeScale = 1;
+    this.renderer.particles.clear();
+    this.renderer.resetDecor();
+    this.refitCamera();
+    this.renderer.prewarm(this.session.world, this.baseZoom);
+    this.renderer.camera.snapTo(this.session.ball.position, this.baseZoom);
+    if (!this.progress.settings.reducedMotion) this.renderer.fadeIn(0.4);
+    this.replayBadge ??= el('div', { class: 'replay-badge', attrs: { role: 'status' } }, [
+      el('span', { class: 'replay-badge__dot' }),
+      el('span', { text: 'Replay' }),
+      el('span', { class: 'replay-badge__skip', text: 'tap or press any key to return' }),
+    ]);
+    this.container.append(this.replayBadge);
+  }
+
+  private updateReplay(dt: number, session: PlaySession): void {
+    const replay = this.replayState;
+    if (!replay) return;
+    const scaled = dt * this.updateTimeScale(dt, session);
+    this.handleSessionEvents(session.update(scaled));
+    this.updateTrail(scaled, session);
+    this.updateCamera(dt, session);
+
+    if (replay.endIn !== null) {
+      replay.endIn -= dt;
+      if (replay.endIn <= 0) this.endReplay();
+      return;
+    }
+    if (!session.canShoot) return;
+    const shot = replay.shots[replay.index];
+    if (!shot) {
+      // Ran out of shots without the drop: hand back rather than sit there.
+      replay.endIn = 1;
+      return;
+    }
+    replay.wait -= dt;
+    if (replay.wait > 0) return;
+    replay.index++;
+    replay.wait = 0.55;
+    this.trail = [];
+    this.handleSessionEvents(session.shoot(V.fromAngle(shot.angle), shot.power));
+  }
+
+  private endReplay(): void {
+    const replay = this.replayState;
+    if (!replay) return;
+    this.replayState = null;
+    this.replayBadge?.remove();
+    replay.back();
   }
 
   private celebrate(amount: number): void {
@@ -1201,6 +1301,12 @@ export class GameApp {
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+
+      if (this.screen === 'replay') {
+        event.preventDefault();
+        this.endReplay();
+        return;
+      }
 
       switch (event.code) {
         case 'Escape':

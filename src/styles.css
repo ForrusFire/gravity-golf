@@ -1322,3 +1322,53 @@ body.loading::after {
   pointer-events: none;
   z-index: 50;
 }
+
+.results__row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.6rem;
+}
+
+/* ------------------------------------------------------------------ replay */
+
+.replay-badge {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.replay-badge__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: replay-blink 1.2s ease-in-out infinite;
+}
+
+.replay-badge__skip {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+}
+
+@keyframes replay-blink {
+  50% {
+    opacity: 0.25;
+  }
+}

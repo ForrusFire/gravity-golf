@@ -62,6 +62,9 @@ npm run dev      # play it at http://localhost:5173
   and is not kept as your ghost.
 - **Take a shot back** whenever you like. Restarting the hole was already free,
   so undo costs nothing but the tedium of replaying the shots before it.
+- **Watch it back.** The results panel can replay the hole from the tee, shot for
+  shot. The physics is deterministic, so a replay is just the same shots played
+  again — it is exactly what happened.
 - **Race your best run.** Once you have finished a hole, a faint ghost replays
   your best attempt beside you.
 - **Feats** reward style: a full orbit, a clean sink that touches nothing, a
