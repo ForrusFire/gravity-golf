@@ -101,6 +101,8 @@ export class Renderer {
   private painter = new PlanetPainter();
   private flashState: { color: string; amount: number; start: number | null } | null = null;
   private fadeState: { duration: number; start: number | null } | null = null;
+  /** When the cup last turned the ball away, for a red flash on its rim. */
+  private cupRejectedAt = -Infinity;
   /** When each body was last struck, for its hit flash. */
   private hits = new Map<string, number>();
 
@@ -1703,6 +1705,18 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, TAU);
     ctx.stroke();
+    // A lip-out flashes the rim red: the cup said no, and why.
+    const rejected = (performance.now() - this.cupRejectedAt) / 450;
+    if (rejected < 1) {
+      ctx.save();
+      ctx.strokeStyle = palette.danger;
+      ctx.globalAlpha = 1 - rejected;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(position.x, position.y, radius + rejected * 6, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
     // A highlight on the far lip, where the light catches it.
     ctx.strokeStyle = 'rgba(255,255,255,0.65)';
     ctx.lineWidth = 1.2;
@@ -2300,6 +2314,11 @@ export class Renderer {
    */
   flash(color: string, amount = 0.35): void {
     this.flashState = { color, amount, start: null };
+  }
+
+  /** The ball arrived too fast and rimmed out. */
+  cupRejected(): void {
+    this.cupRejectedAt = performance.now();
   }
 
   /** Marks a body as just struck, so it flashes. Strength is 0..1. */

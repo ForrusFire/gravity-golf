@@ -609,6 +609,7 @@ export class GameApp {
 
         case 'locked':
           this.audio.play('lipout');
+          this.renderer.cupRejected();
           this.hud.showToast(
             `The cup is sealed — ${event.needed} more star${event.needed === 1 ? '' : 's'}`,
             1.8,
