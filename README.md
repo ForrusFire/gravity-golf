@@ -5,7 +5,9 @@ slingshot it around planets, thread it past black holes, and sink it — in as
 few strokes as you can.
 
 Built in TypeScript on a custom physics engine, with no runtime dependencies.
-It renders to a single HTML canvas and ships as a static site.
+It renders to a single HTML canvas and ships as a static site. Planets are
+painted once into cached sprites — lit, textured and shaded per world type — so
+the scene looks rich while a frame still costs a couple of milliseconds.
 
 ```
 npm install
@@ -15,9 +17,12 @@ npm run dev      # play it at http://localhost:5173
 ## Playing
 
 - **Aim** by dragging back from the ball and releasing, like a slingshot. The
-  further you pull, the harder you hit.
+  further you pull, the harder you hit; the ring round the ball and the
+  percentage behind it show how hard. A ball ready to be struck sends out slow
+  ripples so it is easy to find.
 - **Gravity bends every shot.** The faint field overlay shows which way space
-  pulls at each point; the dot on each tick marks the direction of the pull.
+  pulls at each point, with motes drifting down into each well — faster where
+  the pull is stronger.
 - **Three stars** are hidden on every hole. They only count if the ball
   survives the shot that collected them.
 - **Arrive slowly.** A ball that reaches the cup too fast rims out.
@@ -169,7 +174,8 @@ src/
   core/       vector and scalar maths, seeded PRNG
   physics/    shapes, world stepper, trajectory prediction  (no DOM)
   game/       level data, validation, play session, progress, solver
-  render/     canvas renderer, camera, particles, starfield, palette
+  render/     canvas renderer, planet sprites, hole thumbnails, camera,
+              particles, starfield, palette
   audio/      procedural WebAudio synthesis (no audio files)
   ui/         DOM overlays: HUD, menus, input handling
 ```

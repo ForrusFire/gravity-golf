@@ -23,7 +23,7 @@ import {
 import { Camera } from './camera';
 import { ParticleSystem } from './particles';
 import { colorsForBody, powerColor, styleForBody, type BodyColors, type Palette } from './palette';
-import { LIGHT, PlanetPainter, lighten } from './sprites';
+import { LIGHT, PlanetPainter, lighten, withAlpha } from './sprites';
 import { Starfield } from './starfield';
 import type { BallSkin } from '../game/skins';
 
@@ -1706,24 +1706,46 @@ export class Renderer {
     palette: Palette,
   ): void {
     const color = powerColor(aim.power, palette);
+    const unit = 1 / Math.max(this.camera.zoom, 0.35);
     ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-    // Pull-back indicator behind the ball, like a stretched sling.
-    const back = V.addScaled(aim.origin, aim.direction, -(20 + aim.power * 70));
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
+    // Pull-back: a tapering band behind the ball, like a stretched sling.
+    const pull = 20 + aim.power * 70;
+    const back = V.addScaled(aim.origin, aim.direction, -pull);
+    const side = V.perp(aim.direction);
+    const width = ballRadius * (0.9 + aim.power * 0.5);
+    const grad = ctx.createLinearGradient(aim.origin.x, aim.origin.y, back.x, back.y);
+    grad.addColorStop(0, withAlpha(color, 0.5));
+    grad.addColorStop(1, withAlpha(color, 0));
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(aim.origin.x, aim.origin.y);
+    ctx.moveTo(aim.origin.x + side.x * width, aim.origin.y + side.y * width);
     ctx.lineTo(back.x, back.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.lineTo(aim.origin.x - side.x * width, aim.origin.y - side.y * width);
+    ctx.closePath();
+    ctx.fill();
 
-    // Predicted path as travelling dots — direction is legible at a glance.
+    // Predicted path: a soft glow along the line, with travelling beads on
+    // top so the direction of travel is legible at a glance.
     if (aim.preview.length > 1) {
+      const fadeLength = 13 * 60;
+      ctx.strokeStyle = color;
+      let travelled = 0;
+      ctx.lineWidth = 5 * unit;
+      for (let i = 1; i < aim.preview.length; i++) {
+        const a = aim.preview[i - 1]!;
+        const b = aim.preview[i]!;
+        travelled += V.distance(a, b);
+        ctx.globalAlpha = 0.14 * clamp(1 - travelled / fadeLength, 0.15, 1);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
       const drift = (time * 2) % 1;
-      ctx.globalAlpha = 0.95;
       ctx.fillStyle = color;
       let accumulated = 0;
       const spacing = 13;
@@ -1738,10 +1760,10 @@ export class Renderer {
             const t = along / segment;
             const x = a.x + (b.x - a.x) * t;
             const y = a.y + (b.y - a.y) * t;
-            const fade = 1 - (accumulated + along) / (spacing * 60);
+            const fade = 1 - (accumulated + along) / fadeLength;
             ctx.globalAlpha = clamp(fade, 0.12, 0.95);
             ctx.beginPath();
-            ctx.arc(x, y, 2.4, 0, TAU);
+            ctx.arc(x, y, 2.6 * clamp(fade + 0.3, 0.6, 1.1), 0, TAU);
             ctx.fill();
           }
           along += spacing;
@@ -1771,19 +1793,39 @@ export class Renderer {
       }
     }
 
-    // Power ring around the ball.
-    ctx.globalAlpha = 0.9;
+    // Power ring around the ball, on a faint track so a low-power shot still
+    // shows how much room is left.
+    const ringRadius = ballRadius + 7;
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(aim.origin.x, aim.origin.y, ringRadius, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.95;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(
       aim.origin.x,
       aim.origin.y,
-      ballRadius + 6,
+      ringRadius,
       -Math.PI / 2,
       -Math.PI / 2 + TAU * aim.power,
     );
     ctx.stroke();
+
+    // The number, behind the ball where the finger is not.
+    const labelAt = V.addScaled(aim.origin, aim.direction, -(pull + 16 * unit));
+    ctx.globalAlpha = 0.92;
+    ctx.font = `700 ${12 * unit}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3 * unit;
+    ctx.strokeStyle = 'rgba(4,6,16,0.8)';
+    const label = `${Math.round(aim.power * 100)}%`;
+    ctx.strokeText(label, labelAt.x, labelAt.y);
+    ctx.fillStyle = color;
+    ctx.fillText(label, labelAt.x, labelAt.y);
 
     ctx.restore();
   }
