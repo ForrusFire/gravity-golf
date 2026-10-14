@@ -487,3 +487,58 @@ describe('a shot that is abandoned', () => {
     expect(events.some((e) => e.type === 'star')).toBe(true);
   });
 });
+
+describe('feats for the later mechanics', () => {
+  const corridor = (extra: Partial<LevelDef>): LevelDef => ({
+    id: 'test-feats',
+    name: 'Corridor',
+    chapter: 1,
+    par: 3,
+    tee: V.vec(0, 0),
+    hole: { position: V.vec(600, 0), captureSpeed: 2000 },
+    bounds: { minX: -2000, minY: -2000, maxX: 2000, maxY: 2000 },
+    boundsMode: 'wall',
+    ambientDrag: 0,
+    ...extra,
+  });
+  const play = (level: LevelDef) => {
+    const session = new PlaySession(level);
+    for (let i = 0; i < 20; i++) session.update(1 / 60);
+    session.shoot(V.vec(1, 0), 0.3);
+    for (let i = 0; i < 60 * 8 && session.state !== 'sunk'; i++) session.update(1 / 60);
+    return session;
+  };
+
+  it('credits a sink through a portal', () => {
+    const session = play(
+      corridor({
+        portals: [
+          { id: 'w', from: V.vec(150, 0), to: V.vec(350, 0), radius: 24, twist: 0, boost: 1, bidirectional: false },
+        ],
+      }),
+    );
+    expect(session.state).toBe('sunk');
+    expect(session.result!.feats).toContain('wormhole');
+  });
+
+  it('credits a sink out of a boost ring', () => {
+    const session = play(
+      corridor({
+        boosters: [{ id: 'b', position: V.vec(200, 0), radius: 24, direction: V.vec(1, 0), speed: 400 }],
+      }),
+    );
+    expect(session.state).toBe('sunk');
+    expect(session.result!.feats).toContain('afterburner');
+  });
+
+  it('credits a switch thrown and a sink on the same shot', () => {
+    const session = play(
+      corridor({
+        switches: [{ id: 's', position: V.vec(250, 0), radius: 20, once: true }],
+      }),
+    );
+    expect(session.state).toBe('sunk');
+    expect(session.result!.feats).toContain('oneTwo');
+    expect(session.result!.feats).not.toContain('wormhole');
+  });
+});

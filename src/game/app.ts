@@ -18,6 +18,7 @@ import {
   levelSelectScreen,
   pauseScreen,
   scorecardScreen,
+  type CareerStats,
   scorecardTotals,
   resultsScreen,
   roundCompleteScreen,
@@ -1327,9 +1328,23 @@ export class GameApp {
         CHAPTERS,
         this.progress.earnedFeats(),
         () => this.leaveSubScreen(),
+        this.careerStats(),
       ),
       { onEscape: () => this.leaveSubScreen(), wide: true },
     );
+  }
+
+  private careerStats(): CareerStats {
+    const data = this.progress.get();
+    const records = CAMPAIGN_IDS.map((id) => data.levels[id]).filter((r) => r?.completed);
+    return {
+      aces: records.filter((r) => r!.bestMedal === 'ace').length,
+      underPar: records.filter((r) => r!.bestMedal === 'ace' || r!.bestMedal === 'gold').length,
+      shots: data.totalShots,
+      lost: data.totalDeaths,
+      playTime: data.totalPlayTime,
+      bestRound: this.progress.bestRound,
+    };
   }
 
   private showHelp(from: AppScreen): void {

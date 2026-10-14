@@ -1473,3 +1473,10 @@ body.loading::after {
   text-shadow: 0 0 12px rgba(255, 210, 90, 0.9);
   transform: translate(-50%, -50%);
 }
+
+.card__career {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.6rem 0 0.4rem;
+}

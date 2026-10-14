@@ -440,7 +440,7 @@ test.describe('menus', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Scorecard' }).click();
     await expect(page.getByRole('heading', { name: /^Feats/ })).toBeVisible();
-    await expect(page.locator('.feat')).toHaveCount(6);
+    await expect(page.locator('.feat')).toHaveCount(9);
     // A fresh save has earned none.
     await expect(page.locator('.feat--earned')).toHaveCount(0);
   });

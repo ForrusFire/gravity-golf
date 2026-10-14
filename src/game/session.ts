@@ -56,7 +56,16 @@ export type SessionEvent =
 export type Medal = 'ace' | 'gold' | 'silver' | 'bronze' | 'none';
 
 /** A stylish way to finish a hole. Recognising these rewards flair. */
-export type FeatId = 'orbit' | 'clean' | 'ricochet' | 'longRange' | 'grazer' | 'allStars';
+export type FeatId =
+  | 'orbit'
+  | 'clean'
+  | 'ricochet'
+  | 'longRange'
+  | 'grazer'
+  | 'allStars'
+  | 'wormhole'
+  | 'afterburner'
+  | 'oneTwo';
 
 export interface Feat {
   id: FeatId;
@@ -94,6 +103,21 @@ export const FEATS: Record<FeatId, Feat> = {
     id: 'allStars',
     label: 'Perfect Run',
     description: 'Collected all three stars',
+  },
+  wormhole: {
+    id: 'wormhole',
+    label: 'Wormhole',
+    description: 'Sank it on a shot that went through a portal',
+  },
+  afterburner: {
+    id: 'afterburner',
+    label: 'Afterburner',
+    description: 'Sank it on a shot fired out of a boost ring',
+  },
+  oneTwo: {
+    id: 'oneTwo',
+    label: 'One-Two',
+    description: 'Threw a switch and sank it on the same shot',
   },
 };
 
@@ -146,6 +170,9 @@ interface FeatTracker {
   /** Closest approach to a deadly body, in units of that body's radius. */
   closestHazard: number;
   distance: number;
+  portals: number;
+  boosts: number;
+  switches: number;
 }
 
 const newFeatTracker = (): FeatTracker => ({
@@ -155,6 +182,9 @@ const newFeatTracker = (): FeatTracker => ({
   touched: false,
   closestHazard: Infinity,
   distance: 0,
+  portals: 0,
+  boosts: 0,
+  switches: 0,
 });
 
 export interface HoleResult {
@@ -586,6 +616,9 @@ export class PlaySession {
     // Within a third of a hazard's own radius of its surface counts as a graze.
     if (tracker.closestHazard <= 0.33) feats.push('grazer');
     if (this.bankedStars.size === this.totalStars && this.totalStars > 0) feats.push('allStars');
+    if (tracker.portals > 0) feats.push('wormhole');
+    if (tracker.boosts > 0) feats.push('afterburner');
+    if (tracker.switches > 0) feats.push('oneTwo');
 
     return feats;
   }
@@ -616,14 +649,20 @@ export class PlaySession {
           break;
 
         case 'portal':
+          this.tracker.portals++;
           out.push({ type: 'portal', from: event.from, to: event.to });
           break;
 
-        case 'switch':
+        case 'switch': {
+          // A held pad springing back on its own is not the ball throwing it.
+          const pad = this.world.switches.find((sw) => sw.id === event.id);
+          if (event.on || pad?.holdTime === undefined) this.tracker.switches++;
           out.push({ type: 'switch', id: event.id, position: event.position, on: event.on });
           break;
+        }
 
         case 'boost':
+          this.tracker.boosts++;
           out.push({ type: 'boost', id: event.id, position: event.position, speed: event.speed });
           break;
 

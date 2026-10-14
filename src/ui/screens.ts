@@ -606,11 +606,32 @@ export const scorecardTotals = (rows: ScorecardRow[]): ScorecardTotals => {
   };
 };
 
+/** Lifetime numbers for the scorecard's career row. */
+export interface CareerStats {
+  aces: number;
+  underPar: number;
+  shots: number;
+  lost: number;
+  /** Seconds. */
+  playTime: number;
+  bestRound: number | null;
+}
+
+/** "3h 12m", "41m", "50s" — a career length, not a lap time. */
+const formatDuration = (seconds: number): string => {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
 export const scorecardScreen = (
   rows: ScorecardRow[],
   chapters: Chapter[],
   earnedFeats: readonly FeatId[],
   onBack: () => void,
+  career?: CareerStats,
 ): HTMLElement => {
   const totals = scorecardTotals(rows);
   const body = el('div', { class: 'card' });
@@ -677,7 +698,16 @@ export const scorecardScreen = (
       ),
       statBlock('Stars', `${totals.stars}/${totals.starsTotal}`),
     ]),
-    body,
+    career
+      ? el('div', { class: 'card__career' }, [
+          statBlock('Holes in one', String(career.aces)),
+          statBlock('Under par', String(career.underPar)),
+          statBlock('Shots struck', String(career.shots)),
+          statBlock('Balls lost', String(career.lost)),
+          statBlock('Time in space', formatDuration(career.playTime)),
+          statBlock('Best round', career.bestRound === null ? '—' : String(career.bestRound)),
+        ])
+      : null,
     el('h3', { text: `Feats — ${earnedFeats.length} of ${Object.keys(FEATS).length}` }),
     el(
       'div',
@@ -693,6 +723,8 @@ export const scorecardScreen = (
         ]);
       }),
     ),
+    el('h3', { text: 'Every hole' }),
+    body,
   ]);
 };
 
