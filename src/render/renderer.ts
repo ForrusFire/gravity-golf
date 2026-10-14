@@ -1003,6 +1003,18 @@ export class Renderer {
     ctx.arc(pad.position.x, pad.position.y, pad.radius * 2, 0, TAU);
     ctx.fill();
 
+    // A plate set into space, with a button on it: raised and glowing until
+    // the ball rolls over it, then pressed flat and lit.
+    const { x, y } = pad.position;
+    const r = pad.radius;
+    const plate = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
+    plate.addColorStop(0, 'rgba(20, 16, 40, 0.9)');
+    plate.addColorStop(1, 'rgba(40, 30, 70, 0.9)');
+    ctx.fillStyle = plate;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
     if (!pad.on) {
@@ -1012,24 +1024,38 @@ export class Renderer {
       ctx.lineDashOffset = -time * 18;
     }
     ctx.beginPath();
-    ctx.arc(pad.position.x, pad.position.y, pad.radius, 0, TAU);
+    ctx.arc(x, y, r, 0, TAU);
     ctx.stroke();
-
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = color;
+
+    const button = r * (pad.on ? 0.42 : 0.5);
+    const cap = ctx.createRadialGradient(
+      x + LIGHT.x * button * 0.4,
+      y + LIGHT.y * button * 0.4,
+      button * 0.1,
+      x,
+      y,
+      button,
+    );
     if (pad.on) {
-      ctx.beginPath();
-      ctx.arc(pad.position.x, pad.position.y, pad.radius * 0.36, 0, TAU);
-      ctx.fill();
+      cap.addColorStop(0, '#d9fff0');
+      cap.addColorStop(1, palette.holeRim);
     } else {
-      // A hollow chevron: "throw me".
-      const r = pad.radius * 0.4;
-      ctx.lineWidth = 2.5;
+      cap.addColorStop(0, '#f1e4ff');
+      cap.addColorStop(0.5, palette.accentAlt);
+      cap.addColorStop(1, '#5a3a9e');
+    }
+    ctx.fillStyle = cap;
+    ctx.beginPath();
+    ctx.arc(x, y, button, 0, TAU);
+    ctx.fill();
+    if (!pad.on) {
+      // A raised button casts a little shadow on its plate.
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(pad.position.x - r, pad.position.y + r * 0.5);
-      ctx.lineTo(pad.position.x, pad.position.y - r * 0.6);
-      ctx.lineTo(pad.position.x + r, pad.position.y + r * 0.5);
+      ctx.arc(x - LIGHT.x * 1.5, y - LIGHT.y * 1.5, button + 1, 0, TAU);
       ctx.stroke();
     }
 

@@ -220,32 +220,20 @@ export class Starfield {
   }
 }
 
-/** A small, tilted spiral galaxy: a bright core and two arms of dust. */
+/** A distant galaxy: a small tilted ellipse of light with a brighter core. */
 const paintGalaxy = (ctx: CanvasRenderingContext2D, x: number, y: number, rng: Rng): void => {
-  const r = rng.range(36, 70);
+  const r = rng.range(22, 40);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rng.range(0, TAU));
-  ctx.scale(1, rng.range(0.35, 0.6));
-  const hue = rng.bool() ? '200, 210, 255' : '255, 220, 200';
+  ctx.scale(1, rng.range(0.3, 0.5));
+  const hue = rng.bool() ? '200, 210, 255' : '255, 225, 205';
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-  halo.addColorStop(0, `rgba(${hue}, 0.22)`);
-  halo.addColorStop(0.25, `rgba(${hue}, 0.1)`);
+  halo.addColorStop(0, `rgba(${hue}, 0.32)`);
+  halo.addColorStop(0.18, `rgba(${hue}, 0.12)`);
   halo.addColorStop(1, `rgba(${hue}, 0)`);
   ctx.fillStyle = halo;
   ctx.fillRect(-r, -r, r * 2, r * 2);
-  ctx.fillStyle = `rgb(${hue})`;
-  for (let arm = 0; arm < 2; arm++) {
-    for (let i = 0; i < 70; i++) {
-      const t = i / 70;
-      const a = arm * Math.PI + t * 4.2 + rng.range(-0.18, 0.18);
-      const d = r * (0.1 + t * 0.85);
-      ctx.globalAlpha = (1 - t) * 0.2;
-      ctx.beginPath();
-      ctx.arc(Math.cos(a) * d, Math.sin(a) * d, rng.range(0.5, 1.3), 0, TAU);
-      ctx.fill();
-    }
-  }
   ctx.restore();
 };
 
