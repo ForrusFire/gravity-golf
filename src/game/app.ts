@@ -666,6 +666,8 @@ export class GameApp {
     const flyby = this.progress.settings.reducedMotion ? 0 : FLYBY_SECONDS;
     this.flybyTimer = flyby;
     this.renderer.prewarm(this.session.world, this.baseZoom);
+    // Each chapter under a sky of its own.
+    this.renderer.starfield.setVariant(level.chapter, !this.progress.settings.highContrast);
     if (!this.progress.settings.reducedMotion) this.renderer.fadeIn(0.5);
     if (flyby > 0) {
       const bounds = this.session.world.bounds;
@@ -1265,6 +1267,7 @@ export class GameApp {
     if (!session) {
       // Menus sit over a little living system rather than a blank sky.
       const showcase = (this.showcase ??= createShowcase());
+      this.renderer.starfield.setVariant(0, !this.progress.settings.highContrast);
       const t = options.reducedMotion ? 3 : performance.now() / 1000;
       showcase.world.time = t;
       const camera = this.renderer.camera;

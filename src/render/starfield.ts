@@ -38,15 +38,43 @@ interface BakedLayer {
  * Radial-gradient fills are the single most expensive thing a 2D canvas does,
  * and the background used to redraw dozens of screen-sized ones per frame.
  */
+/**
+ * Nebula tints per sky, so each chapter has a sky of its own. The first is the
+ * palette's own; the rest rotate through hues that keep the same weight.
+ */
+const SKIES: Array<[string, string] | null> = [
+  null,
+  ['rgba(150, 60, 120, 0.26)', 'rgba(60, 80, 170, 0.22)'],
+  ['rgba(40, 110, 150, 0.26)', 'rgba(30, 140, 120, 0.18)'],
+  ['rgba(170, 80, 50, 0.22)', 'rgba(110, 50, 140, 0.24)'],
+  ['rgba(60, 60, 170, 0.28)', 'rgba(140, 60, 170, 0.2)'],
+  ['rgba(30, 120, 110, 0.22)', 'rgba(80, 60, 150, 0.24)'],
+  ['rgba(160, 50, 90, 0.24)', 'rgba(170, 110, 50, 0.16)'],
+];
+
+/** Not every star is white: a sky of one colour reads as a texture. */
+const STAR_TINTS = ['#ffffff', '#ffffff', '#ffffff', '#cfe0ff', '#bcd2ff', '#ffe9c4', '#ffd6c8'];
+
 export class Starfield {
   private layers: BakedLayer[] = [];
   private bakedFor: string | null = null;
   private time = 0;
+  private variant = 0;
+  private useSkyTints = true;
 
   constructor(
     private readonly tileSize = 1024,
     private readonly seed = 20240,
   ) {}
+
+  /**
+   * Picks the sky: a different scatter of stars and, unless the palette must
+   * stay as it is (high contrast), a different nebula tint.
+   */
+  setVariant(variant: number, tinted = true): void {
+    this.variant = Math.max(0, Math.floor(variant));
+    this.useSkyTints = tinted;
+  }
 
   update(dt: number): void {
     this.time += dt;
@@ -121,9 +149,13 @@ export class Starfield {
 
   /** Rasterises each depth band once for the given palette. */
   private bake(palette: Palette): void {
-    const key = `${palette.star}|${palette.nebulaA}|${palette.nebulaB}`;
+    const sky = this.useSkyTints ? SKIES[this.variant % SKIES.length] : null;
+    const nebulaA = sky?.[0] ?? palette.nebulaA;
+    const nebulaB = sky?.[1] ?? palette.nebulaB;
+    const key = `${palette.star}|${nebulaA}|${nebulaB}|${this.variant}`;
     if (this.bakedFor === key) return;
     this.bakedFor = key;
+    const baseSeed = this.seed + this.variant * 104729;
 
     const size = this.tileSize;
     this.layers = LAYERS.map((spec, index) => {
@@ -131,13 +163,13 @@ export class Starfield {
       const ctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
       if (!canvas || !ctx) return { depth: spec.depth, canvas: null };
 
-      const rng = new Rng(this.seed + index * 7919);
+      const rng = new Rng(baseSeed + index * 7919);
 
       for (let i = 0; i < spec.nebulae; i++) {
         const cx = rng.range(0, size);
         const cy = rng.range(0, size);
         const r = rng.range(size * 0.22, size * 0.45);
-        const color = rng.bool() ? palette.nebulaA : palette.nebulaB;
+        const color = rng.bool() ? nebulaA : nebulaB;
         // Painted toroidally — once per neighbouring tile. A nebula near the
         // edge of the tile used to be cut off flat, and since the tile repeats
         // across the screen that cut showed as a hard vertical seam on every
@@ -156,15 +188,30 @@ export class Starfield {
         }
       }
 
-      ctx.fillStyle = palette.star;
+      // Galaxies far off in the deepest band: the sky goes further than stars.
+      if (index === 0) {
+        for (let i = 0; i < 2; i++) {
+          paintGalaxy(ctx, rng.range(120, size - 120), rng.range(120, size - 120), rng);
+        }
+      }
+
       for (let i = 0; i < spec.stars; i++) {
         // Keep stars clear of the tile seam so the repeat is not obvious.
         const x = rng.range(2, size - 2);
         const y = rng.range(2, size - 2);
         ctx.globalAlpha = rng.range(spec.minAlpha, spec.maxAlpha);
+        ctx.fillStyle = index === 0 ? palette.star : rng.pick(STAR_TINTS);
         ctx.beginPath();
         ctx.arc(x, y, rng.range(spec.minSize, spec.maxSize), 0, TAU);
         ctx.fill();
+      }
+
+      // A few bright stars in the middle band, with the cross of spikes a
+      // telescope gives them.
+      if (index === 1) {
+        for (let i = 0; i < 3; i++) {
+          paintBrightStar(ctx, rng.range(40, size - 40), rng.range(40, size - 40), rng);
+        }
       }
       ctx.globalAlpha = 1;
 
@@ -172,6 +219,63 @@ export class Starfield {
     });
   }
 }
+
+/** A small, tilted spiral galaxy: a bright core and two arms of dust. */
+const paintGalaxy = (ctx: CanvasRenderingContext2D, x: number, y: number, rng: Rng): void => {
+  const r = rng.range(36, 70);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rng.range(0, TAU));
+  ctx.scale(1, rng.range(0.35, 0.6));
+  const hue = rng.bool() ? '200, 210, 255' : '255, 220, 200';
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+  halo.addColorStop(0, `rgba(${hue}, 0.35)`);
+  halo.addColorStop(0.25, `rgba(${hue}, 0.1)`);
+  halo.addColorStop(1, `rgba(${hue}, 0)`);
+  ctx.fillStyle = halo;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+  ctx.fillStyle = `rgb(${hue})`;
+  for (let arm = 0; arm < 2; arm++) {
+    for (let i = 0; i < 70; i++) {
+      const t = i / 70;
+      const a = arm * Math.PI + t * 4.2 + rng.range(-0.18, 0.18);
+      const d = r * (0.1 + t * 0.85);
+      ctx.globalAlpha = (1 - t) * 0.3;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * d, Math.sin(a) * d, rng.range(0.5, 1.3), 0, TAU);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+};
+
+const paintBrightStar = (ctx: CanvasRenderingContext2D, x: number, y: number, rng: Rng): void => {
+  // Cool and dim on purpose: nothing in the sky may look like a star to
+  // collect, which are gold and five-pointed.
+  const tint = rng.pick(['200, 215, 255', '185, 205, 255', '215, 225, 255']);
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, 7);
+  glow.addColorStop(0, `rgba(${tint}, 0.6)`);
+  glow.addColorStop(1, `rgba(${tint}, 0)`);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 7, y - 7, 14, 14);
+  const spike = rng.range(6, 11);
+  for (const [dx, dy] of [
+    [1, 0],
+    [0, 1],
+  ] as const) {
+    const line = ctx.createLinearGradient(x - dx * spike, y - dy * spike, x + dx * spike, y + dy * spike);
+    line.addColorStop(0, `rgba(${tint}, 0)`);
+    line.addColorStop(0.5, `rgba(${tint}, 0.45)`);
+    line.addColorStop(1, `rgba(${tint}, 0)`);
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - dx * spike, y - dy * spike);
+    ctx.lineTo(x + dx * spike, y + dy * spike);
+    ctx.stroke();
+  }
+};
 
 const createCanvas = (width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null => {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
