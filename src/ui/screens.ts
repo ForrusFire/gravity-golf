@@ -5,6 +5,7 @@ import { FEATS, type FeatId, type HoleResult, type Medal } from '../game/session
 import { roundPar, roundStars, roundStrokes, type RoundState } from '../game/round';
 import { BALL_SKINS, isSkinUnlocked } from '../game/skins';
 import { drawThumbnail } from '../render/thumbnail';
+import { medalBadge } from './medal';
 import { button, clear, el, formatTime, formatToPar, starRow } from './dom';
 
 const MEDAL_LABEL: Record<Medal, string> = {
@@ -15,13 +16,6 @@ const MEDAL_LABEL: Record<Medal, string> = {
   none: 'Completed',
 };
 
-const MEDAL_GLYPH: Record<Medal, string> = {
-  ace: '🏆',
-  gold: '🥇',
-  silver: '🥈',
-  bronze: '🥉',
-  none: '⛳',
-};
 
 /**
  * A single full-screen overlay. Only one is visible at a time; showing a panel
@@ -238,7 +232,9 @@ export const levelSelectScreen = (
           ]),
           starRow(record?.bestStars ?? 0),
           record?.bestMedal && record.bestMedal !== 'none'
-            ? el('span', { class: 'level-card__medal', text: MEDAL_GLYPH[record.bestMedal] })
+            ? el('span', { class: 'level-card__medal', attrs: { title: MEDAL_LABEL[record.bestMedal] } }, [
+                medalBadge(record.bestMedal, 22),
+              ])
             : null,
         ],
       );
@@ -279,7 +275,7 @@ export const resultsScreen = (
   callbacks: ResultsCallbacks,
 ): HTMLElement =>
   el('div', { class: 'results' }, [
-    el('div', { class: 'results__medal', text: MEDAL_GLYPH[result.medal] }),
+    el('div', { class: 'results__medal' }, [medalBadge(result.medal, 76)]),
     el('h2', { class: 'results__title', text: MEDAL_LABEL[result.medal] }),
     el('p', { class: 'results__level', text: levelName }),
     callbacks.isNewBest ? el('p', { class: 'results__best', text: '★ New personal best!' }) : null,
@@ -805,7 +801,7 @@ export const campaignCompleteScreen = (
 ): HTMLElement => {
   const diff = summary.totals.strokes - summary.totals.par;
   return el('div', { class: 'results results--finale' }, [
-    el('div', { class: 'results__medal', text: '🏆' }),
+    el('div', { class: 'results__medal' }, [medalBadge('ace', 84)]),
     el('h2', { class: 'results__title', text: 'Course complete' }),
     el('p', {
       class: 'results__level',

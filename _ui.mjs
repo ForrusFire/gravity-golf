@@ -9,7 +9,7 @@ await page.goto('http://127.0.0.1:4173/?hole=c6-2', { waitUntil: 'networkidle' }
 await page.waitForTimeout(1200);
 await page.evaluate(() => {
   const s = window.gravityGolf.session; const h = s.world.hole;
-  s.shoot({x:1,y:0}, 0.05);
+  s.shoot({x:1,y:0}, 0.05); s.state='aiming'; s.shoot({x:1,y:0}, 0.05); s.state='aiming'; s.shoot({x:1,y:0}, 0.05);
   s.ball.position = { x: h.position.x, y: h.position.y - h.radius * 0.4 };
   s.ball.velocity = {x:0,y:0};
 });
