@@ -205,9 +205,36 @@ body.loading::after {
 }
 
 .hud__stat-value {
+  display: inline-block;
   font-size: 1.25rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.hud__stars .star {
+  display: inline-block;
+}
+
+.hud__stat-value.is-bumped,
+.hud__stars .star.is-bumped {
+  animation: hud-bump 0.45s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+
+.hud__stars .star--on {
+  text-shadow: 0 0 10px rgba(255, 210, 90, 0.7);
+}
+
+@keyframes hud-bump {
+  40% {
+    transform: scale(1.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud__stat-value.is-bumped,
+  .hud__stars .star.is-bumped {
+    animation: none;
+  }
 }
 
 .hud__stat-value--par.is-under {

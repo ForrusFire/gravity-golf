@@ -149,7 +149,12 @@ export class Hud {
 
   /** Refreshes the readouts from the live session. */
   sync(session: PlaySession): void {
-    this.strokeValue.textContent = String(session.strokes);
+    const strokes = String(session.strokes);
+    if (this.strokeValue.textContent !== strokes) {
+      // A bump on change, so a new stroke registers without reading it.
+      this.strokeValue.textContent = strokes;
+      bump(this.strokeValue);
+    }
     const toPar = formatToPar(session.strokes, session.level.par);
     this.toParValue.textContent = toPar;
     const played = session.strokes > 0;
@@ -166,7 +171,9 @@ export class Hud {
     }
     this.starHolder.setAttribute('aria-label', `${earned} of ${total} stars collected`);
     Array.from(this.starHolder.children).forEach((node, i) => {
-      node.classList.toggle('star--on', i < earned);
+      const on = i < earned;
+      if (on && !node.classList.contains('star--on')) bump(node as HTMLElement);
+      node.classList.toggle('star--on', on);
     });
 
     this.undoButton.disabled = !session.canUndo;
@@ -207,3 +214,10 @@ export class Hud {
     this.root.classList.toggle('hud--hidden', !visible);
   }
 }
+
+/** Restarts an element's bump animation. */
+const bump = (node: HTMLElement): void => {
+  node.classList.remove('is-bumped');
+  void node.offsetWidth;
+  node.classList.add('is-bumped');
+};

@@ -1306,6 +1306,15 @@ export class GameApp {
           : null,
       hintPath: this.screen === 'play' ? (this.hintLine?.path ?? null) : null,
       ballReady: this.screen === 'play' && session.canShoot,
+      // Only for someone who has never sunk a ball, on the first hole, until
+      // they take a shot.
+      tutorial:
+        this.screen === 'play' &&
+        session.canShoot &&
+        session.strokes === 0 &&
+        session.level.id === CAMPAIGN_IDS[0] &&
+        this.progress.completedCount(CAMPAIGN_IDS) === 0 &&
+        this.flybyTimer <= 0,
     };
     this.renderer.draw(scene, options);
   }

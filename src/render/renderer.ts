@@ -61,6 +61,8 @@ export interface Scene {
   ghost: { position: Vec2; trail: Vec2[] } | null;
   /** The path of a suggested shot, drawn while the hint is on screen. */
   hintPath: Vec2[] | null;
+  /** First hole, first shot: show a ghost finger pulling back to aim. */
+  tutorial?: boolean;
   /** The ball is waiting for a shot: draw a beacon so it is easy to find. */
   ballReady?: boolean;
   /** A menu backdrop: no cup to point at. */
@@ -219,6 +221,8 @@ export class Renderer {
       this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
     }
 
+    if (scene.tutorial && !scene.aim) this.drawTutorial(ctx, scene, options.palette);
+
     if (scene.aim && options.aimAssist > 0) {
       this.drawAim(ctx, scene.aim, scene.ballRadius, scene.time, options.palette);
     }
@@ -356,19 +360,20 @@ export class Renderer {
         const dx = g.x / magnitude;
         const dy = g.y / magnitude;
 
-        ctx.globalAlpha = strength * 0.08;
+        // Where the pull is only the hole's steady background gravity, a
+        // whisper of a guide says enough; motes there just look like rain.
+        // They are for the wells, where the field bends.
+        const ux = g.x - world.uniformGravity.x;
+        const uy = g.y - world.uniformGravity.y;
+        const steady = ux * ux + uy * uy < 36;
+
+        ctx.globalAlpha = strength * (steady ? 0.04 : 0.08);
         ctx.lineWidth = 1.2 * unit;
         ctx.beginPath();
         ctx.moveTo(px - dx * len, py - dy * len);
         ctx.lineTo(px + dx * len, py + dy * len);
         ctx.stroke();
-
-        // Where the pull is only the hole's steady background gravity, the
-        // guide says enough; motes there just look like rain. They are for
-        // the wells, where the field bends.
-        const ux = g.x - world.uniformGravity.x;
-        const uy = g.y - world.uniformGravity.y;
-        if (ux * ux + uy * uy < 36) continue;
+        if (steady) continue;
 
         // The mote: quicker where the pull is stronger.
         const phase = animate ? (time * (0.35 + strength * 0.9) + hash) % 1 : 0.7;
@@ -1058,7 +1063,7 @@ export class Renderer {
     const screenRadius = radius * this.camera.zoom;
     const oversized = screenRadius > Math.max(this.width, this.height);
 
-    if (colors.glow && !oversized) {
+    if (colors.glow && !oversized && shape.kind === 'circle') {
       // A star breathes; nothing else does.
       const breathe = style === 'sun' ? 1 + Math.sin(time * 1.7) * 0.05 : 1;
       const glowRadius = radius * (style === 'sun' ? 2.6 : 1.7) * breathe;
@@ -1096,7 +1101,7 @@ export class Renderer {
     if (!painted) {
       if (style === 'sun' && shape.kind === 'circle' && !oversized) {
         this.drawSunSurface(ctx, center, radius, colors, time);
-      } else if (shape.kind === 'circle' && !oversized) {
+      } else if (shape.kind === 'circle' && screenRadius < Math.max(this.width, this.height) * 0.6) {
         const grad = ctx.createRadialGradient(
           center.x + LIGHT.x * radius * 0.4,
           center.y + LIGHT.y * radius * 0.4,
@@ -1114,9 +1119,29 @@ export class Renderer {
       } else if (shape.kind !== 'circle') {
         this.drawSlab(ctx, shape, colors);
       } else {
-        ctx.fillStyle = colors.fill;
+        // A world far bigger than the screen: shade it from the surface down
+        // toward the core along the view, so it reads as ground with depth
+        // rather than a flat slab of colour.
+        const eye = this.camera.eye;
+        const n = V.normalize(V.sub(eye, center));
+        const surface = V.addScaled(center, n, radius);
+        const inner = V.addScaled(surface, n, -320 / this.camera.zoom);
+        const ground = ctx.createLinearGradient(surface.x, surface.y, inner.x, inner.y);
+        ground.addColorStop(0, lighten(colors.fill, 0.18));
+        ground.addColorStop(0.05, colors.fill);
+        ground.addColorStop(0.45, colors.fillDark);
+        ground.addColorStop(1, '#060814');
+        ctx.fillStyle = ground;
         this.tracePath(ctx, shape);
         ctx.fill();
+        // Atmosphere along the horizon.
+        ctx.save();
+        ctx.strokeStyle = colors.rim;
+        ctx.globalAlpha = 0.18;
+        ctx.lineWidth = 14 / this.camera.zoom;
+        this.tracePath(ctx, shape);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -1690,7 +1715,7 @@ export class Renderer {
       if (item.collected) continue;
       const bob = Math.sin(scene.time * 2.2 + item.position.x * 0.02) * 3;
       const p = { x: item.position.x, y: item.position.y + bob };
-      const spin = scene.time * 1.4;
+      const spin = scene.time * 1.4 + item.position.x * 0.017 + item.position.y * 0.011;
 
       ctx.save();
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, item.radius * 2.6);
@@ -1705,7 +1730,7 @@ export class Renderer {
       // Turning on its vertical axis like a coin: reads as a solid thing in
       // space rather than a sticker spinning flat.
       const turn = Math.cos(spin);
-      ctx.scale(Math.max(0.18, Math.abs(turn)), 1);
+      ctx.scale(0.35 + 0.65 * Math.abs(turn), 1);
       const fill = ctx.createLinearGradient(0, -item.radius, 0, item.radius);
       fill.addColorStop(0, '#fff3b0');
       fill.addColorStop(0.5, palette.collectible);
@@ -1840,6 +1865,61 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(x, y, radius + 1.8, 0, TAU);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * A ghost finger that presses on the ball, pulls back away from the cup and
+   * lets go — the one gesture the game needs, shown rather than explained.
+   */
+  private drawTutorial(ctx: CanvasRenderingContext2D, scene: Scene, palette: Palette): void {
+    const ball = scene.ballPosition;
+    const toCup = V.normalize(V.sub(holePositionAt(scene.world), ball));
+    const away = V.neg(toCup.x === 0 && toCup.y === 0 ? { x: 1, y: 0 } : toCup);
+    const cycle = (scene.time % 2.6) / 2.6;
+    const unit = 1 / Math.max(this.camera.zoom, 0.35);
+    // 0-0.15 press, 0.15-0.6 pull, 0.6-0.75 hold, then release and fade.
+    const pull = clamp((cycle - 0.15) / 0.45, 0, 1);
+    const eased = 1 - (1 - pull) * (1 - pull);
+    const finger = V.addScaled(ball, away, eased * 90);
+    const visible = cycle < 0.8 ? clamp(cycle / 0.08, 0, 1) : clamp((0.92 - cycle) / 0.12, 0, 1);
+
+    ctx.save();
+    ctx.globalAlpha = visible * 0.8;
+    if (pull > 0) {
+      ctx.strokeStyle = palette.textDim;
+      ctx.lineWidth = 1.6 * unit;
+      ctx.setLineDash([5 * unit, 5 * unit]);
+      ctx.beginPath();
+      ctx.moveTo(ball.x, ball.y);
+      ctx.lineTo(finger.x, finger.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Where the shot goes: the opposite way, toward the cup.
+      ctx.strokeStyle = palette.holeRim;
+      ctx.lineWidth = 2.4 * unit;
+      const tip = V.addScaled(ball, toCup, 26 + eased * 40);
+      ctx.beginPath();
+      ctx.moveTo(ball.x + toCup.x * 14, ball.y + toCup.y * 14);
+      ctx.lineTo(tip.x, tip.y);
+      const side = V.perp(toCup);
+      ctx.moveTo(tip.x - toCup.x * 8 + side.x * 6, tip.y - toCup.y * 8 + side.y * 6);
+      ctx.lineTo(tip.x, tip.y);
+      ctx.lineTo(tip.x - toCup.x * 8 - side.x * 6, tip.y - toCup.y * 8 - side.y * 6);
+      ctx.stroke();
+    }
+    // The fingertip: a soft disc, pressed a little smaller while it holds.
+    const pressed = cycle > 0.1 && cycle < 0.78;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(finger.x, finger.y, (pressed ? 9 : 11) * unit, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 2 * unit;
+    ctx.beginPath();
+    ctx.arc(finger.x, finger.y, (pressed ? 14 : 18) * unit, 0, TAU);
+    ctx.stroke();
+
     ctx.restore();
   }
 
