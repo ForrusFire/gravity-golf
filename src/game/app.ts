@@ -92,6 +92,8 @@ export class GameApp {
   private returnScreen: AppScreen = 'title';
 
   private trail: Vec2[] = [];
+  /** performance.now() when the ball dropped, for the fall-into-the-cup animation. */
+  private sinkStart = 0;
   private trailClock = 0;
   private aimState: AimState | null = null;
   private previewCache: { key: string; points: Vec2[]; outcome: AimState['previewOutcome'] } | null =
@@ -462,6 +464,17 @@ export class GameApp {
     const particles = this.renderer.particles;
     const camera = this.renderer.camera;
     const shakeAllowed = this.progress.settings.screenShake;
+    // A buzz in the hand on phones that have one. Shares the shake setting:
+    // anyone who wants a still screen wants a still device too.
+    const buzz = (pattern: number | number[]): void => {
+      if (shakeAllowed && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate(pattern);
+        } catch {
+          // Some browsers throw without a user gesture; it is only garnish.
+        }
+      }
+    };
 
     for (const event of events) {
       switch (event.type) {
@@ -489,12 +502,14 @@ export class GameApp {
             sizeVariance: 0,
           });
           if (shakeAllowed && event.power > 0.75) camera.shake(1.5 * event.power, 0.12);
+          buzz(8 + Math.round(event.power * 14));
           break;
 
         case 'bounce':
           this.audio.playImpact(event.material, event.speed);
           particles.impact(event.point, event.normal, event.speed, palette.trail);
           if (shakeAllowed && event.speed > 320) camera.shake(event.speed / 260, 0.25);
+          if (event.speed > 320) buzz(10);
           break;
 
         case 'star':
@@ -560,6 +575,7 @@ export class GameApp {
           particles.explosion(event.position, palette.danger);
           if (shakeAllowed) camera.shake(9, 0.45);
           this.renderer.flash(palette.danger, 0.16);
+          buzz([40, 30, 60]);
           this.trail = [];
           const reason =
             event.cause === 'out-of-bounds' ? 'Lost in deep space' : 'Ball destroyed';
@@ -578,9 +594,11 @@ export class GameApp {
 
         case 'sunk': {
           this.audio.play('sink');
+          this.sinkStart = performance.now();
           particles.sinkCelebration(holePositionAt(session.world), palette.holeRim);
           if (shakeAllowed) camera.shake(4, 0.3);
           this.renderer.flash(palette.holeRim, 0.22);
+          buzz([18, 40, 18, 40, 50]);
           const feat = event.result.feats[0];
           if (feat) this.hud.showToast(FEATS[feat].label, 2.4, 'good');
           this.finishHole();
@@ -1250,10 +1268,19 @@ export class GameApp {
     }
 
     const ghost = this.ghost;
+    // A sunk ball drops into the cup rather than sitting on top of it.
+    let ballPosition = session.ball.position;
+    let ballRadius = session.ball.radius;
+    if (session.state === 'sunk') {
+      const t = clamp((performance.now() - this.sinkStart) / 380, 0, 1);
+      const ease = 1 - (1 - t) * (1 - t);
+      ballPosition = V.lerpVec(ballPosition, holePositionAt(session.world), ease);
+      ballRadius *= 1 - 0.8 * ease;
+    }
     const scene: Scene = {
       world: session.world,
-      ballPosition: session.ball.position,
-      ballRadius: session.ball.radius,
+      ballPosition,
+      ballRadius,
       ballVisible: session.state !== 'respawning',
       trail: this.trail,
       aim: this.screen === 'play' ? this.aimState : null,
@@ -1265,6 +1292,7 @@ export class GameApp {
           ? { position: ghost.position, trail: ghost.trail }
           : null,
       hintPath: this.screen === 'play' ? (this.hintLine?.path ?? null) : null,
+      ballReady: this.screen === 'play' && session.canShoot,
     };
     this.renderer.draw(scene, options);
   }

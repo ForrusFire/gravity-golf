@@ -176,7 +176,7 @@ export class ParticleSystem {
           // Ease out: a shockwave leaves fast and slows as it spreads.
           const age = 1 - t;
           const r = p.size * (0.4 + 1.4 * (1 - (1 - age) * (1 - age)));
-          ctx.lineWidth = Math.max(0.4, p.size * 0.28 * t);
+          ctx.lineWidth = Math.max(0.4, Math.min(p.size * 0.28, 3.5) * t);
           ctx.beginPath();
           ctx.arc(p.x, p.y, Math.max(0.2, r), 0, TAU);
           ctx.stroke();

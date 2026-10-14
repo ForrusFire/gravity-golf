@@ -61,6 +61,8 @@ export interface Scene {
   ghost: { position: Vec2; trail: Vec2[] } | null;
   /** The path of a suggested shot, drawn while the hint is on screen. */
   hintPath: Vec2[] | null;
+  /** The ball is waiting for a shot: draw a beacon so it is easy to find. */
+  ballReady?: boolean;
   /** A menu backdrop: no cup to point at. */
   backdrop?: boolean;
 }
@@ -201,6 +203,9 @@ export class Renderer {
 
     if (scene.ballVisible) {
       this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail);
+      if (scene.ballReady && !scene.aim && !options.reducedMotion) {
+        this.drawBeacon(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
+      }
       this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
     }
 
@@ -340,18 +345,25 @@ export class Renderer {
         const dx = g.x / magnitude;
         const dy = g.y / magnitude;
 
-        ctx.globalAlpha = strength * 0.13;
+        ctx.globalAlpha = strength * 0.08;
         ctx.lineWidth = 1.2 * unit;
         ctx.beginPath();
         ctx.moveTo(px - dx * len, py - dy * len);
         ctx.lineTo(px + dx * len, py + dy * len);
         ctx.stroke();
 
+        // Where the pull is only the hole's steady background gravity, the
+        // guide says enough; motes there just look like rain. They are for
+        // the wells, where the field bends.
+        const ux = g.x - world.uniformGravity.x;
+        const uy = g.y - world.uniformGravity.y;
+        if (ux * ux + uy * uy < 36) continue;
+
         // The mote: quicker where the pull is stronger.
         const phase = animate ? (time * (0.35 + strength * 0.9) + hash) % 1 : 0.7;
         const head = len * (phase * 2 - 1);
         const tail = head - len * 0.7;
-        ctx.globalAlpha = strength * 0.7 * Math.sin(phase * Math.PI);
+        ctx.globalAlpha = strength * 0.42 * Math.sin(phase * Math.PI);
         ctx.lineWidth = (1.3 + strength * 1.1) * unit;
         ctx.beginPath();
         ctx.moveTo(px + dx * tail, py + dy * tail);
@@ -1624,6 +1636,27 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(x, y, radius + 1.8, 0, TAU);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Slow ripples off a ball that is waiting to be struck. */
+  private drawBeacon(
+    ctx: CanvasRenderingContext2D,
+    position: Vec2,
+    radius: number,
+    time: number,
+    skin: BallSkin,
+  ): void {
+    ctx.save();
+    ctx.strokeStyle = skin.highlight;
+    ctx.lineWidth = 1.5 / Math.max(this.camera.zoom, 0.5);
+    for (let i = 0; i < 2; i++) {
+      const t = (time / 1.8 + i * 0.5) % 1;
+      ctx.globalAlpha = (1 - t) * 0.45;
+      ctx.beginPath();
+      ctx.arc(position.x, position.y, radius * (1.6 + t * 3.2), 0, TAU);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

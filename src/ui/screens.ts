@@ -4,6 +4,7 @@ import type { ProgressStore, Settings } from '../game/progress';
 import { FEATS, type FeatId, type HoleResult, type Medal } from '../game/session';
 import { roundPar, roundStars, roundStrokes, type RoundState } from '../game/round';
 import { BALL_SKINS, isSkinUnlocked } from '../game/skins';
+import { drawThumbnail } from '../render/thumbnail';
 import { button, clear, el, formatTime, formatToPar, starRow } from './dom';
 
 const MEDAL_LABEL: Record<Medal, string> = {
@@ -171,6 +172,12 @@ export const isLevelUnlocked = (
   return previous ? progress.isCompleted(previous.id) : false;
 };
 
+const levelMap = (level: LevelDef): HTMLCanvasElement => {
+  const canvas = el('canvas', { class: 'level-card__map', attrs: { 'aria-hidden': 'true' } });
+  drawThumbnail(canvas, level);
+  return canvas;
+};
+
 export const levelSelectScreen = (
   chapters: Chapter[],
   ordered: LevelDef[],
@@ -222,6 +229,7 @@ export const levelSelectScreen = (
           on: { click: () => unlocked && callbacks.onPick(level) },
         },
         [
+          levelMap(level),
           el('span', { class: 'level-card__num', text: unlocked ? String(index + 1) : '🔒' }),
           el('span', { class: 'level-card__name', text: level.name }),
           el('span', { class: 'level-card__meta' }, [
@@ -502,7 +510,7 @@ export const settingsScreen = (
         (v) => onChange({ showGravityField: v }),
         'Shows which way each point in space pulls',
       ),
-      toggle('Screen shake', settings.screenShake, (v) => onChange({ screenShake: v })),
+      toggle('Screen shake & vibration', settings.screenShake, (v) => onChange({ screenShake: v })),
       toggle(
         'Reduced motion',
         settings.reducedMotion,

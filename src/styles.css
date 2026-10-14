@@ -548,6 +548,19 @@ body.loading::after {
   border-color: rgba(127, 227, 166, 0.4);
 }
 
+.level-card__map {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+  border: 1px solid rgba(140, 160, 220, 0.14);
+}
+
+.level-card--locked .level-card__map {
+  filter: grayscale(0.7) brightness(0.7);
+}
+
 .level-card__num {
   font-size: 0.72rem;
   color: var(--text-dim);
@@ -581,6 +594,50 @@ body.loading::after {
 
 .results {
   text-align: center;
+  animation: rise 0.42s cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(14px) scale(0.97);
+    opacity: 0;
+  }
+}
+
+.results__medal {
+  filter: drop-shadow(0 0 16px rgba(255, 210, 90, 0.45));
+}
+
+/* Earned stars land one after another, so each one is a moment. */
+.results__stars .star--on {
+  animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
+  text-shadow: 0 0 14px rgba(255, 210, 90, 0.7);
+}
+
+.results__stars .star--on:nth-child(1) {
+  animation-delay: 0.25s;
+}
+
+.results__stars .star--on:nth-child(2) {
+  animation-delay: 0.45s;
+}
+
+.results__stars .star--on:nth-child(3) {
+  animation-delay: 0.65s;
+}
+
+@keyframes star-land {
+  from {
+    transform: scale(2.4) rotate(-40deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .results,
+  .results__stars .star--on {
+    animation: none;
+  }
 }
 
 .results__medal {
