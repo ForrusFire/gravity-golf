@@ -45,7 +45,7 @@ describe('custom holes', () => {
     expect(hole.par).toBe(CUSTOM_LIMITS.maxPar);
     expect(hole.name.length).toBeLessThanOrEqual(CUSTOM_LIMITS.nameLength);
     expect(hole.items.length).toBe(CUSTOM_LIMITS.items);
-    expect(hole.items.every((i) => i.t !== 'wall' && i.r === CUSTOM_LIMITS.maxRadius)).toBe(true);
+    expect(hole.items.every((i) => 'r' in i && i.r === CUSTOM_LIMITS.maxRadius)).toBe(true);
     expect(hole.stars.length).toBe(3);
   });
 
@@ -55,4 +55,19 @@ describe('custom holes', () => {
     const solution = solveLevel(level, { angleSamples: 72, powerSamples: 5, maxStrokes: 3 });
     expect(solution.solved).toBe(true);
   }, 60000);
+
+  it('carries portals and boost rings into the hole', () => {
+    const hole = emptyCustomHole();
+    hole.items.push({ t: 'portal', x1: -200, y1: -200, x2: 200, y2: -200 });
+    hole.items.push({ t: 'boost', x: 0, y: -100, a: Math.PI / 2 });
+    const back = decodeCustomHole(encodeCustomHole(hole))!;
+    const level = customToLevel(back);
+    expect(level.portals).toHaveLength(1);
+    expect(level.portals![0]!.to).toEqual({ x: 200, y: -200 });
+    expect(level.boosters).toHaveLength(1);
+    expect(level.boosters![0]!.direction.y).toBeCloseTo(1, 9);
+    // Neither is a solid body.
+    expect(level.bodies).toHaveLength(2);
+    expect(validateLevel(level)).toEqual([]);
+  });
 });

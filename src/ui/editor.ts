@@ -16,7 +16,16 @@ import type { World } from '../physics/world';
 import type { Camera } from '../render/camera';
 import { button, el } from './dom';
 
-export type EditorTool = CustomBodyKind | 'wall' | 'star' | 'tee' | 'cup' | 'move' | 'erase';
+export type EditorTool =
+  | CustomBodyKind
+  | 'wall'
+  | 'portal'
+  | 'boost'
+  | 'star'
+  | 'tee'
+  | 'cup'
+  | 'move'
+  | 'erase';
 
 const TOOLS: Array<{ id: EditorTool; label: string; hint: string }> = [
   { id: 'move', label: 'Move', hint: 'Drag anything to move it' },
@@ -30,6 +39,8 @@ const TOOLS: Array<{ id: EditorTool; label: string; hint: string }> = [
   { id: 'bumper', label: 'Bumper', hint: 'Bounces back harder' },
   { id: 'rock', label: 'Rock', hint: 'Solid, no pull' },
   { id: 'wall', label: 'Wall', hint: 'Drag from one end to the other' },
+  { id: 'portal', label: 'Portal', hint: 'Drag from the way in to the way out' },
+  { id: 'boost', label: 'Boost', hint: 'Click, or drag the way it should fire' },
   { id: 'star', label: 'Star', hint: 'Up to three' },
   { id: 'tee', label: 'Tee', hint: 'Where the ball starts' },
   { id: 'cup', label: 'Cup', hint: 'Where it has to end' },
@@ -235,9 +246,19 @@ export class HoleEditor {
     const p = this.pending;
     if (p) {
       ctx.beginPath();
-      if (p.t === 'wall') {
+      if (p.t === 'wall' || p.t === 'portal') {
         ctx.moveTo(p.x1, p.y1);
         ctx.lineTo(p.x2, p.y2);
+        if (p.t === 'portal') {
+          ctx.moveTo(p.x1 + 28, p.y1);
+          ctx.arc(p.x1, p.y1, 28, 0, TAU);
+          ctx.moveTo(p.x2 + 28, p.y2);
+          ctx.arc(p.x2, p.y2, 28, 0, TAU);
+        }
+      } else if (p.t === 'boost') {
+        ctx.arc(p.x, p.y, 26, 0, TAU);
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + Math.cos(p.a) * 60, p.y + Math.sin(p.a) * 60);
       } else {
         ctx.arc(p.x, p.y, p.r, 0, TAU);
       }
@@ -308,9 +329,11 @@ export class HoleEditor {
     }
     this.pendingStart = p;
     this.pending =
-      tool === 'wall'
-        ? { t: 'wall', x1: p.x, y1: p.y, x2: p.x, y2: p.y }
-        : { t: tool, x: p.x, y: p.y, r: DEFAULT_RADIUS[tool] };
+      tool === 'wall' || tool === 'portal'
+        ? { t: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y }
+        : tool === 'boost'
+          ? { t: 'boost', x: p.x, y: p.y, a: 0 }
+          : { t: tool, x: p.x, y: p.y, r: DEFAULT_RADIUS[tool] };
   };
 
   private onMove = (event: PointerEvent): void => {
@@ -318,9 +341,13 @@ export class HoleEditor {
     const p = this.worldPoint(event);
     const pending = this.pending;
     if (pending && this.pendingStart) {
-      if (pending.t === 'wall') {
+      if (pending.t === 'wall' || pending.t === 'portal') {
         pending.x2 = p.x;
         pending.y2 = p.y;
+      } else if (pending.t === 'boost') {
+        if (V.distance(p, this.pendingStart) > 8) {
+          pending.a = Math.atan2(p.y - this.pendingStart.y, p.x - this.pendingStart.x);
+        }
       } else {
         const d = V.distance(p, this.pendingStart);
         // A plain click keeps the default size; a drag sets it.
@@ -333,7 +360,7 @@ export class HoleEditor {
     const target = V.add(p, grab.offset);
     if (grab.kind === 'item') {
       const item = this.hole.items[grab.index]!;
-      if (item.t === 'wall') {
+      if (item.t === 'wall' || item.t === 'portal') {
         const mid = { x: (item.x1 + item.x2) / 2, y: (item.y1 + item.y2) / 2 };
         const dx = Math.round(target.x - mid.x);
         const dy = Math.round(target.y - mid.y);
@@ -363,6 +390,10 @@ export class HoleEditor {
     if (pending) {
       if (pending.t === 'wall' && Math.hypot(pending.x2 - pending.x1, pending.y2 - pending.y1) < 24) {
         this.status('Drag further to draw a wall');
+        return;
+      }
+      if (pending.t === 'portal' && Math.hypot(pending.x2 - pending.x1, pending.y2 - pending.y1) < 90) {
+        this.status('Drag the way out further from the way in');
         return;
       }
       this.checkpoint();
@@ -398,14 +429,16 @@ export class HoleEditor {
     }
     for (let i = this.hole.items.length - 1; i >= 0; i--) {
       const item = this.hole.items[i]!;
-      if (item.t === 'wall') {
+      if (item.t === 'wall' || item.t === 'portal') {
         const a = { x: item.x1, y: item.y1 };
         const b = { x: item.x2, y: item.y2 };
-        if (distanceToSegment(p, a, b) <= 18) {
+        const reach = item.t === 'portal' ? 30 : 18;
+        const onEnd = item.t === 'portal' && (V.distance(p, a) <= reach || V.distance(p, b) <= reach);
+        if (onEnd || (item.t === 'wall' && distanceToSegment(p, a, b) <= reach)) {
           const mid = V.lerpVec(a, b, 0.5);
           return { kind: 'item', index: i, offset: V.sub(mid, p) };
         }
-      } else if (near(item.x, item.y, item.r + 6)) {
+      } else if (near(item.x, item.y, (item.t === 'boost' ? 26 : item.r) + 6)) {
         return { kind: 'item', index: i, offset: V.sub({ x: item.x, y: item.y }, p) };
       }
     }

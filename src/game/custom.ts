@@ -35,7 +35,11 @@ export type CustomBodyKind =
 
 export type CustomItem =
   | { t: CustomBodyKind; x: number; y: number; r: number }
-  | { t: 'wall'; x1: number; y1: number; x2: number; y2: number };
+  | { t: 'wall'; x1: number; y1: number; x2: number; y2: number }
+  /** A one-way wormhole from (x1, y1) to (x2, y2). */
+  | { t: 'portal'; x1: number; y1: number; x2: number; y2: number }
+  /** A boost ring at (x, y) firing along the angle `a` (radians). */
+  | { t: 'boost'; x: number; y: number; a: number };
 
 export interface CustomHole {
   v: 1;
@@ -91,7 +95,10 @@ export const emptyCustomHole = (): CustomHole => ({
 
 /* ------------------------------------------------------------ to a hole */
 
-const bodyFor = (item: CustomItem, index: number): Body => {
+const bodyFor = (
+  item: Exclude<CustomItem, { t: 'portal' } | { t: 'boost' }>,
+  index: number,
+): Body => {
   const id = `custom-${index}`;
   if (item.t === 'wall') {
     return wall(id, vec(item.x1, item.y1), vec(item.x2, item.y2), 10);
@@ -135,7 +142,37 @@ export const customToLevel = (hole: CustomHole): LevelDef & { custom: CustomHole
   boundsMode: hole.walls ? 'wall' : 'kill',
   ambientDrag: 0.12,
   uniformGravity: hole.down ? vec(0, 340) : undefined,
-  bodies: hole.items.map(bodyFor),
+  bodies: hole.items.flatMap((item, i) =>
+    item.t === 'portal' || item.t === 'boost' ? [] : [bodyFor(item, i)],
+  ),
+  portals: hole.items.flatMap((item, i) =>
+    item.t === 'portal'
+      ? [
+          {
+            id: `custom-portal-${i}`,
+            from: vec(item.x1, item.y1),
+            to: vec(item.x2, item.y2),
+            radius: 28,
+            twist: 0,
+            boost: 1,
+            bidirectional: false,
+          },
+        ]
+      : [],
+  ),
+  boosters: hole.items.flatMap((item, i) =>
+    item.t === 'boost'
+      ? [
+          {
+            id: `custom-boost-${i}`,
+            position: vec(item.x, item.y),
+            radius: 26,
+            direction: vec(Math.cos(item.a), Math.sin(item.a)),
+            speed: 520,
+          },
+        ]
+      : [],
+  ),
   stars: hole.stars.map(([x, y]) => vec(x, y)),
   custom: hole,
 });
@@ -163,8 +200,10 @@ export const sanitizeCustomHole = (raw: unknown): CustomHole | null => {
   for (const entry of Array.isArray(data.items) ? data.items.slice(0, CUSTOM_LIMITS.items) : []) {
     if (typeof entry !== 'object' || entry === null) continue;
     const item = entry as Record<string, unknown>;
-    if (item.t === 'wall') {
-      items.push({ t: 'wall', x1: xOf(item.x1), y1: yOf(item.y1), x2: xOf(item.x2), y2: yOf(item.y2) });
+    if (item.t === 'wall' || item.t === 'portal') {
+      items.push({ t: item.t, x1: xOf(item.x1), y1: yOf(item.y1), x2: xOf(item.x2), y2: yOf(item.y2) });
+    } else if (item.t === 'boost') {
+      items.push({ t: 'boost', x: xOf(item.x), y: yOf(item.y), a: num(item.a, -10, 10, 0) });
     } else if (typeof item.t === 'string' && (BODY_KINDS as readonly string[]).includes(item.t)) {
       items.push({
         t: item.t as CustomBodyKind,
