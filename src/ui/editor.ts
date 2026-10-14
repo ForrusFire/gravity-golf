@@ -97,6 +97,7 @@ export class HoleEditor {
   private parValue: HTMLElement;
   private downToggle: HTMLInputElement;
   private wallsToggle: HTMLInputElement;
+  private turnToggle: HTMLInputElement;
   private pending: CustomItem | null = null;
   private pendingStart: Vec2 | null = null;
   private grab: Grab | null = null;
@@ -139,6 +140,7 @@ export class HoleEditor {
         change: () => {
           this.checkpoint();
           this.hole.down = this.downToggle.checked;
+          if (!this.hole.down) this.hole.turn = false;
           this.changed();
         },
       },
@@ -154,6 +156,19 @@ export class HoleEditor {
       },
     });
 
+    this.turnToggle = el('input', {
+      attrs: { type: 'checkbox', 'aria-label': 'Down turns while the ball waits' },
+      on: {
+        change: () => {
+          this.checkpoint();
+          this.hole.turn = this.turnToggle.checked;
+          // Turning needs a down to turn.
+          if (this.hole.turn) this.hole.down = true;
+          this.changed();
+        },
+      },
+    });
+
     const actions = el('div', { class: 'editor__actions' }, [
       this.nameInput,
       el('span', { class: 'editor__par' }, [
@@ -163,6 +178,7 @@ export class HoleEditor {
       ]),
       el('label', { class: 'editor__toggle' }, [this.downToggle, el('span', { text: 'Down' })]),
       el('label', { class: 'editor__toggle' }, [this.wallsToggle, el('span', { text: 'Walls' })]),
+      el('label', { class: 'editor__toggle' }, [this.turnToggle, el('span', { text: 'Turn' })]),
       (this.undoButton = button('Undo', () => this.undo(), {
         class: 'btn--ghost',
         attrs: { title: 'Undo (Ctrl+Z)' },
@@ -523,6 +539,7 @@ export class HoleEditor {
     this.parValue.textContent = `Par ${this.hole.par}`;
     this.downToggle.checked = this.hole.down;
     this.wallsToggle.checked = this.hole.walls;
+    this.turnToggle.checked = this.hole.turn === true;
   }
 
   private renderToolbar(): void {

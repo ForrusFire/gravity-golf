@@ -107,6 +107,31 @@ export const drawThumbnail = (canvas: HTMLCanvasElement, level: LevelDef, scale 
     }
   }
 
+  // Portals as linked violet rings, boost rings as lime ones.
+  {
+    const px0 = 1 / zoom;
+    ctx.lineWidth = 1.6 * px0 * scale;
+    for (const portal of level.portals ?? []) {
+      ctx.strokeStyle = 'rgba(199,146,255,0.35)';
+      ctx.beginPath();
+      ctx.moveTo(portal.from.x, portal.from.y);
+      ctx.lineTo(portal.to.x, portal.to.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#c792ff';
+      for (const end of [portal.from, portal.to]) {
+        ctx.beginPath();
+        ctx.arc(end.x, end.y, Math.max(portal.radius, 4 * px0 * scale), 0, TAU);
+        ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = '#a6f259';
+    for (const boost of level.boosters ?? []) {
+      ctx.beginPath();
+      ctx.arc(boost.position.x, boost.position.y, Math.max(boost.radius, 4 * px0 * scale), 0, TAU);
+      ctx.stroke();
+    }
+  }
+
   // Stars, tee and cup sized in screen pixels so they read at any hole size.
   const px = 1 / zoom;
   ctx.fillStyle = '#ffd25a';

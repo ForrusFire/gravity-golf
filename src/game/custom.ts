@@ -53,6 +53,8 @@ export interface CustomHole {
   down: boolean;
   /** Bounce off the edges instead of being lost past them. */
   walls: boolean;
+  /** "Down" turns while the ball waits, as in the Tumble chapter. Needs `down`. */
+  turn?: boolean;
 }
 
 export const CUSTOM_LIMITS = {
@@ -91,6 +93,7 @@ export const emptyCustomHole = (): CustomHole => ({
   stars: [],
   down: false,
   walls: false,
+  turn: false,
 });
 
 /* ------------------------------------------------------------ to a hole */
@@ -142,6 +145,8 @@ export const customToLevel = (hole: CustomHole): LevelDef & { custom: CustomHole
   boundsMode: hole.walls ? 'wall' : 'kill',
   ambientDrag: 0.12,
   uniformGravity: hole.down ? vec(0, 340) : undefined,
+  gravitySpin: hole.down && hole.turn ? { speed: 0.35 } : undefined,
+  shotTimeout: hole.down && hole.turn && hole.walls ? 30 : undefined,
   bodies: hole.items.flatMap((item, i) =>
     item.t === 'portal' || item.t === 'boost' ? [] : [bodyFor(item, i)],
   ),
@@ -235,6 +240,7 @@ export const sanitizeCustomHole = (raw: unknown): CustomHole | null => {
     stars,
     down: data.down === true,
     walls: data.walls === true,
+    turn: data.turn === true,
   };
 };
 
