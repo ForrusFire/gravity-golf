@@ -17,6 +17,8 @@ export interface BallSkin {
   glow: string;
   /** Colour of the flight trail. */
   trail: string;
+  /** The trail cycles through the spectrum instead of holding one colour. */
+  rainbow?: boolean;
 }
 
 export const BALL_SKINS: BallSkin[] = [
@@ -64,6 +66,43 @@ export const BALL_SKINS: BallSkin[] = [
     body: '#6d47c4',
     glow: 'rgba(160, 90, 255, 0.75)',
     trail: 'rgba(190, 130, 255, 0.7)',
+  },
+  {
+    id: 'solar',
+    name: 'Solar',
+    starsRequired: 110,
+    highlight: '#fffbe0',
+    body: '#ffc53d',
+    glow: 'rgba(255, 200, 70, 0.75)',
+    trail: 'rgba(255, 210, 100, 0.7)',
+  },
+  {
+    id: 'glacier',
+    name: 'Glacier',
+    starsRequired: 150,
+    highlight: '#ffffff',
+    body: '#d7f4ff',
+    glow: 'rgba(200, 240, 255, 0.75)',
+    trail: 'rgba(210, 245, 255, 0.7)',
+  },
+  {
+    id: 'nebula',
+    name: 'Nebula',
+    starsRequired: 200,
+    highlight: '#ffe0f6',
+    body: '#ff6fcf',
+    glow: 'rgba(255, 110, 210, 0.75)',
+    trail: 'rgba(255, 140, 220, 0.7)',
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    starsRequired: 250,
+    highlight: '#ffffff',
+    body: '#9fffe0',
+    glow: 'rgba(150, 255, 220, 0.8)',
+    trail: 'rgba(150, 255, 220, 0.7)',
+    rainbow: true,
   },
 ];
 

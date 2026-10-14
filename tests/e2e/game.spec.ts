@@ -450,7 +450,7 @@ test.describe('menus', () => {
     await page.getByRole('button', { name: 'Settings' }).click();
 
     const skins = page.locator('.skin');
-    await expect(skins).toHaveCount(5);
+    await expect(skins).toHaveCount(9);
     // Only the default is available with no stars.
     await expect(skins.nth(0)).toBeEnabled();
     await expect(skins.nth(1)).toBeDisabled();

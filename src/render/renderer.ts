@@ -229,7 +229,7 @@ export class Renderer {
     if (scene.ghost) this.drawGhost(ctx, scene.ghost, scene.ballRadius, options.palette);
 
     if (scene.ballVisible) {
-      this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail);
+      this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail, scene.skin.rainbow ? scene.time : null);
       if (scene.ballReady && !scene.aim && !options.reducedMotion) {
         this.drawBeacon(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
       }
@@ -2022,6 +2022,8 @@ export class Renderer {
     trail: Vec2[],
     ballRadius: number,
     color: string,
+    /** Scene time for a spectrum trail, or null for a single colour. */
+    rainbow: number | null = null,
   ): void {
     if (trail.length < 2) return;
     ctx.save();
@@ -2032,6 +2034,9 @@ export class Renderer {
     ctx.strokeStyle = color;
     for (let i = 1; i < trail.length; i++) {
       const t = i / trail.length;
+      if (rainbow !== null) {
+        ctx.strokeStyle = `hsl(${(rainbow * 90 + i * 11) % 360}, 95%, 68%)`;
+      }
       const a = trail[i - 1]!;
       const b = trail[i]!;
       // A wide soft glow...
