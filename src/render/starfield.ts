@@ -89,28 +89,38 @@ export class Starfield {
     palette: Palette,
     twinkle: boolean,
   ): void {
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    // Drawn in device pixels, tiles copied 1:1 at whole-pixel positions. A
+    // tile scaled up to the backing store is a filtered blit of the whole
+    // screen per layer; on a device rasterising on the CPU that alone took a
+    // frame from 17ms to 50ms.
+    const ratio = Math.max(1, ctx.getTransform().a);
+    const pxWidth = Math.ceil(width * ratio);
+    const pxHeight = Math.ceil(height * ratio);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const gradient = ctx.createLinearGradient(0, 0, 0, pxHeight);
     gradient.addColorStop(0, palette.spaceTop);
     gradient.addColorStop(1, palette.spaceBottom);
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, pxWidth, pxHeight);
 
-    this.bake(palette);
+    this.bake(palette, ratio);
 
-    const tile = this.tileSize;
-    ctx.save();
+    const tile = this.tilePixels;
     for (const layer of this.layers) {
       if (!layer.canvas) continue;
       // A slow global shimmer costs nothing, unlike per-star twinkling.
       ctx.globalAlpha = twinkle ? 0.86 + 0.14 * Math.sin(this.time * 0.7 + layer.depth * 9) : 1;
 
-      const shiftX = -eye.x * layer.depth * zoom;
-      const shiftY = -eye.y * layer.depth * zoom;
-      const startX = (((shiftX % tile) + tile) % tile) - tile;
-      const startY = (((shiftY % tile) + tile) % tile) - tile;
+      const shiftX = -eye.x * layer.depth * zoom * ratio;
+      const shiftY = -eye.y * layer.depth * zoom * ratio;
+      const startX = Math.round((((shiftX % tile) + tile) % tile) - tile);
+      const startY = Math.round((((shiftY % tile) + tile) % tile) - tile);
 
-      for (let x = startX; x < width; x += tile) {
-        for (let y = startY; y < height; y += tile) {
+      for (let x = startX; x < pxWidth; x += tile) {
+        if (x + tile <= 0) continue;
+        for (let y = startY; y < pxHeight; y += tile) {
+          if (y + tile <= 0) continue;
           ctx.drawImage(layer.canvas as CanvasImageSource, x, y);
         }
       }
@@ -147,21 +157,33 @@ export class Starfield {
     }
   }
 
-  /** Rasterises each depth band once for the given palette. */
-  private bake(palette: Palette): void {
+  /** Device pixels per tile edge, as last baked. */
+  private tilePixels = 1024;
+
+  /**
+   * Rasterises each depth band once for the given palette, at the backing
+   * store's own resolution so drawing is a plain copy. The tile is capped at
+   * 1.5x its CSS size in pixels — on a 2x screen it covers a little less sky
+   * per repeat, rather than costing 16MB a layer.
+   */
+  private bake(palette: Palette, ratio: number): void {
     const sky = this.useSkyTints ? SKIES[this.variant % SKIES.length] : null;
     const nebulaA = sky?.[0] ?? palette.nebulaA;
     const nebulaB = sky?.[1] ?? palette.nebulaB;
-    const key = `${palette.star}|${nebulaA}|${nebulaB}|${this.variant}`;
+    const key = `${palette.star}|${nebulaA}|${nebulaB}|${this.variant}|${ratio}`;
     if (this.bakedFor === key) return;
     this.bakedFor = key;
     const baseSeed = this.seed + this.variant * 104729;
 
-    const size = this.tileSize;
+    const pixels = Math.round(this.tileSize * Math.min(ratio, 1.5));
+    this.tilePixels = pixels;
+    // The content is laid out in CSS units over the tile.
+    const size = pixels / ratio;
     this.layers = LAYERS.map((spec, index) => {
-      const canvas = createCanvas(size, size);
+      const canvas = createCanvas(pixels, pixels);
       const ctx = canvas?.getContext('2d') as CanvasRenderingContext2D | null;
       if (!canvas || !ctx) return { depth: spec.depth, canvas: null };
+      ctx.scale(ratio, ratio);
 
       const rng = new Rng(baseSeed + index * 7919);
 
