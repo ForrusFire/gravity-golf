@@ -235,6 +235,8 @@ export class Renderer {
     if (scene.ghost) this.drawGhost(ctx, scene.ghost, scene.ballRadius, options.palette);
 
     if (scene.ballVisible) {
+      // Never smaller than a few pixels across, however far the view pulls back.
+      const ballDrawn = Math.max(scene.ballRadius, 3.4 / Math.max(this.camera.zoom, 0.05));
       this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail, scene.skin.rainbow ? scene.time : null);
       if (scene.ballReady && !scene.aim && !options.reducedMotion) {
         this.drawBeacon(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
@@ -248,10 +250,10 @@ export class Renderer {
         ctx.scale(1 - amount, 1 + amount * 0.6);
         ctx.rotate(-Math.atan2(normal.y, normal.x));
         ctx.translate(-p.x, -p.y);
-        this.drawBall(ctx, p, scene.ballRadius, scene.time, scene.skin);
+        this.drawBall(ctx, p, ballDrawn, scene.time, scene.skin);
         ctx.restore();
       } else {
-        this.drawBall(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);
+        this.drawBall(ctx, scene.ballPosition, ballDrawn, scene.time, scene.skin);
       }
     }
 
@@ -288,13 +290,15 @@ export class Renderer {
   ): void {
     const hole = holePositionAt(scene.world);
     const screen = this.camera.worldToScreen(hole);
-    const margin = 46;
+    // Any of the cup in sight is enough; the marker would only cover it.
+    const inset = 6;
     const onScreen =
-      screen.x >= margin &&
-      screen.x <= this.width - margin &&
-      screen.y >= margin &&
-      screen.y <= this.height - margin;
+      screen.x >= inset &&
+      screen.x <= this.width - inset &&
+      screen.y >= inset &&
+      screen.y <= this.height - inset;
     if (onScreen) return;
+    const margin = 46;
 
     const cx = this.width / 2;
     const cy = this.height / 2;
@@ -492,11 +496,19 @@ export class Renderer {
         ctx.stroke();
         if (steady) continue;
 
+        // How much the pull changes over one cell. Far from a big world the
+        // field is all but parallel — the guide line says it all, and motes
+        // there only read as rain. They are for where the field bends.
+        const across = gravityAt(world, { x: px - dy * spacing, y: py + dx * spacing });
+        const bend = Math.hypot(across.x - g.x, across.y - g.y) / magnitude;
+        const motes = clamp((bend - 0.04) / 0.14, 0, 1);
+        if (motes <= 0.01) continue;
+
         // The mote: quicker where the pull is stronger.
         const phase = animate ? (time * (0.35 + strength * 0.9) + hash) % 1 : 0.7;
         const head = len * (phase * 2 - 1);
         const tail = head - len * 0.7;
-        ctx.globalAlpha = strength * 0.42 * Math.sin(phase * Math.PI);
+        ctx.globalAlpha = strength * 0.36 * motes * Math.sin(phase * Math.PI);
         ctx.lineWidth = (1.3 + strength * 1.1) * unit;
         ctx.beginPath();
         ctx.moveTo(px + dx * tail, py + dy * tail);
@@ -2143,11 +2155,20 @@ export class Renderer {
     const toCup = V.normalize(V.sub(holePositionAt(scene.world), ball));
     const away = V.neg(toCup.x === 0 && toCup.y === 0 ? { x: 1, y: 0 } : toCup);
     const cycle = (scene.time % 2.6) / 2.6;
-    const unit = 1 / Math.max(this.camera.zoom, 0.35);
+    const unit = 1 / Math.max(this.camera.zoom, 0.2);
     // 0-0.15 press, 0.15-0.6 pull, 0.6-0.75 hold, then release and fade.
     const pull = clamp((cycle - 0.15) / 0.45, 0, 1);
     const eased = 1 - (1 - pull) * (1 - pull);
-    const finger = V.addScaled(ball, away, eased * 90);
+    // The drag works from anywhere, so the demonstration starts from wherever
+    // the whole pull stays on screen — on a phone the ball can sit at the edge.
+    const reach = 80 * unit;
+    const room = this.camera.visibleBounds(-70 * unit);
+    const inside = (p: Vec2): Vec2 => ({
+      x: clamp(p.x, room.minX, Math.max(room.minX, room.maxX)),
+      y: clamp(p.y, room.minY, Math.max(room.minY, room.maxY)),
+    });
+    const start = inside(V.sub(inside(V.addScaled(ball, away, reach)), V.mul(away, reach)));
+    const finger = V.addScaled(start, away, eased * reach);
     const visible = cycle < 0.8 ? clamp(cycle / 0.08, 0, 1) : clamp((0.92 - cycle) / 0.12, 0, 1);
 
     ctx.save();
@@ -2157,21 +2178,23 @@ export class Renderer {
       ctx.lineWidth = 1.6 * unit;
       ctx.setLineDash([5 * unit, 5 * unit]);
       ctx.beginPath();
-      ctx.moveTo(ball.x, ball.y);
+      ctx.moveTo(start.x, start.y);
       ctx.lineTo(finger.x, finger.y);
       ctx.stroke();
       ctx.setLineDash([]);
       // Where the shot goes: the opposite way, toward the cup.
       ctx.strokeStyle = palette.holeRim;
       ctx.lineWidth = 2.4 * unit;
-      const tip = V.addScaled(ball, toCup, 26 + eased * 40);
+      const tip = V.addScaled(ball, toCup, (26 + eased * 40) * unit);
       ctx.beginPath();
-      ctx.moveTo(ball.x + toCup.x * 14, ball.y + toCup.y * 14);
+      ctx.moveTo(ball.x + toCup.x * 14 * unit, ball.y + toCup.y * 14 * unit);
       ctx.lineTo(tip.x, tip.y);
       const side = V.perp(toCup);
-      ctx.moveTo(tip.x - toCup.x * 8 + side.x * 6, tip.y - toCup.y * 8 + side.y * 6);
+      const head = 8 * unit;
+      const wing = 6 * unit;
+      ctx.moveTo(tip.x - toCup.x * head + side.x * wing, tip.y - toCup.y * head + side.y * wing);
       ctx.lineTo(tip.x, tip.y);
-      ctx.lineTo(tip.x - toCup.x * 8 - side.x * 6, tip.y - toCup.y * 8 - side.y * 6);
+      ctx.lineTo(tip.x - toCup.x * head - side.x * wing, tip.y - toCup.y * head - side.y * wing);
       ctx.stroke();
     }
     // The fingertip: a soft disc, pressed a little smaller while it holds.

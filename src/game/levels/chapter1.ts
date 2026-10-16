@@ -37,7 +37,7 @@ export const CHAPTER_1: LevelDef[] = [
     // An enclosed practice green: overhitting on the very first hole should
     // bounce off the back wall, not cost a penalty stroke.
     boundsMode: 'wall',
-    hint: 'Drag back from the ball and release to putt.',
+    hint: 'Drag anywhere, pull away from where you want to go, and let go to putt.',
     bodies: [groundBody()],
     // Low along the ground, then one that rewards getting the ball airborne.
     stars: [vec(-150, 300), vec(0, 40), vec(220, 290)],

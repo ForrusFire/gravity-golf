@@ -79,6 +79,8 @@ const CAMPAIGN_IDS = ALL_LEVELS.map((level) => level.id);
 
 /** The ball stops being a legible object below roughly this scale. */
 const MIN_ZOOM = 0.55;
+/** How far the view may pull back while aiming to show the cup. */
+const AIM_MIN_ZOOM = 0.3;
 /** Seconds of flight before a long shot starts to play faster. */
 const FAST_AFTER = 6;
 /** The most a long shot is sped up. */
@@ -519,14 +521,25 @@ export class GameApp {
 
     let focus = session.ball.position;
     if (session.state !== 'flying') {
-      // While aiming, lean the view toward the hole so the player can see where
-      // they are shooting. Capped by the viewport so the ball never slides off.
-      // Each axis is capped by its own side of the screen: on a phone in
-      // portrait there is far more room to lean up or down than sideways.
-      const lead = V.mul(V.sub(holePositionAt(session.world), focus), 0.42);
+      // While aiming, both the ball and the cup should be in view: a gravity
+      // shot cannot be planned at an arrow. On a phone in portrait the
+      // whole-hole zoom floors out well short of that, so pull back further
+      // while the ball waits — never closer than the usual view.
+      const cup = holePositionAt(session.world);
+      const margin = 110;
+      const span = V.sub(cup, focus);
+      const both = Math.min(
+        camera.viewportWidth / (Math.abs(span.x) + margin * 2),
+        camera.viewportHeight / (Math.abs(span.y) + margin * 2),
+      );
+      camera.targetZoom = Math.min(this.baseZoom, Math.max(both, AIM_MIN_ZOOM)) * this.manualZoom;
+
+      // And lean toward the cup. Capped by the viewport so the ball never
+      // slides off; each axis by its own side of the screen.
+      const lead = V.mul(span, 0.46);
       const zoom = Math.max(camera.zoom, 0.01);
-      const maxX = (camera.viewportWidth / zoom) * 0.3;
-      const maxY = (camera.viewportHeight / zoom) * 0.3;
+      const maxX = (camera.viewportWidth / zoom) * 0.38;
+      const maxY = (camera.viewportHeight / zoom) * 0.38;
       focus = V.add(focus, { x: clamp(lead.x, -maxX, maxX), y: clamp(lead.y, -maxY, maxY) });
     }
     camera.target = V.add(focus, this.cameraOffset);
@@ -795,7 +808,12 @@ export class GameApp {
     this.screen = 'play';
     this.overlay.hide();
     this.hud.setVisible(true);
-    this.hud.setLevel(level, !this.hintShownFor.has(level.id), this.introKicker(level));
+    // The first hole's hint teaches the controls, so it follows the aim setting.
+    const shown =
+      level.id === CAMPAIGN_IDS[0] && this.progress.settings.aimMode === 'direct'
+        ? { ...level, hint: 'Drag anywhere toward where you want to go, and let go to putt.' }
+        : level;
+    this.hud.setLevel(shown, !this.hintShownFor.has(level.id), this.introKicker(level));
     this.hintShownFor.add(level.id);
     this.hud.sync(this.session);
 
@@ -1798,6 +1816,7 @@ export class GameApp {
       // Only for someone who has never sunk a ball, on the first hole, until
       // they take a shot.
       tutorial:
+        this.progress.settings.aimMode === 'slingshot' &&
         this.screen === 'play' &&
         session.canShoot &&
         session.strokes === 0 &&

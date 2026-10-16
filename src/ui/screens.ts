@@ -949,7 +949,7 @@ export const helpScreen = (onBack: () => void): HTMLElement =>
       button('Back', onBack, { class: 'btn--ghost' }),
     ]),
     el('div', { class: 'help' }, [
-      helpItem(pictogram('aim'), 'Aim', 'Drag back from the ball and release, like a slingshot. The further you pull, the harder you hit.'),
+      helpItem(pictogram('aim'), 'Aim', 'Drag anywhere on the screen and let go, like a slingshot: pull away from where you want the ball to go. The further you pull, the harder you hit. (Settings can flip this to drag toward.)'),
       helpItem(pictogram('gravity'), 'Gravity', 'Planets bend your shot. The faint field lines show which way space pulls at every point.'),
       helpItem(pictogram('star'), 'Stars', 'Three stars are hidden on every hole. They only count if the ball survives the shot.'),
       helpItem(pictogram('hole'), 'The hole', 'Arrive slowly. Come in too fast and the ball rims out.'),
