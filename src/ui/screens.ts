@@ -142,7 +142,10 @@ export const titleScreen = (
       }),
       nextHole ? el('span', { class: 'title__next', text: nextHole }) : null,
       button('Select hole', callbacks.onLevels),
-      el('div', { class: 'title__grid' }, [
+      // On a fresh save Play is the one thing that matters; the other modes
+      // stay a click away but step back, under a heading of their own.
+      completed === 0 ? el('p', { class: 'title__more', text: 'More ways to play' }) : null,
+      el('div', { class: `title__grid${completed === 0 ? ' title__grid--quiet' : ''}` }, [
         button(dailyDone ? 'Daily challenge ✓' : 'Daily challenge', callbacks.onDaily, {
           class: dailyStreak >= 2 ? 'btn--streak' : '',
           attrs: dailyStreak >= 2 ? { 'data-streak': `${dailyStreak}-day streak` } : {},
@@ -152,7 +155,7 @@ export const titleScreen = (
         button('Scorecard', callbacks.onScorecard),
       ]),
       el('div', { class: 'title__grid title__grid--3' }, [
-        button('How to play', callbacks.onHelp, { class: 'btn--ghost' }),
+        button('Help', callbacks.onHelp, { class: 'btn--ghost', attrs: { 'aria-label': 'How to play' } }),
         button('Create', callbacks.onCreate, { class: 'btn--ghost' }),
         button('Settings', callbacks.onSettings, { class: 'btn--ghost' }),
       ]),

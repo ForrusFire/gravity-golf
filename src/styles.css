@@ -1502,6 +1502,20 @@ body.loading::after {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.title__more {
+  margin: 0.5rem 0 -0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.title__grid--quiet .btn {
+  background: transparent;
+  border-color: rgba(150, 180, 255, 0.18);
+  color: var(--text-dim);
+}
+
 /* ------------------------------------------------------------------ editor */
 
 .editor {
