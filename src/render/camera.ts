@@ -105,6 +105,21 @@ export class Camera {
     };
   }
 
+  /**
+   * Zooms to `zoom` keeping the world point under `from` (screen) under `to`
+   * — a pinch's centre can move as it zooms, which is how it pans.
+   */
+  zoomAround(from: Vec2, zoom: number, to: Vec2 = from): void {
+    const world = this.screenToWorld(from);
+    this.snapTo(
+      {
+        x: world.x - (to.x - this.viewportWidth / 2) / zoom,
+        y: world.y - (to.y - this.viewportHeight / 2) / zoom,
+      },
+      zoom,
+    );
+  }
+
   /** The world-space rectangle currently visible, expanded by `margin`. */
   visibleBounds(margin = 0): Aabb {
     const eye = this.eye;

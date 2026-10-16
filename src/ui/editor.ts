@@ -100,6 +100,11 @@ export class HoleEditor {
   private pendingStart: Vec2 | null = null;
   private grab: Grab | null = null;
   private pointerId: number | null = null;
+  /** Fingers on the canvas, in screen space, for pinch-zoom. */
+  private touches = new Map<number, Vec2>();
+  private pinch: { distance: number; center: Vec2 } | null = null;
+  /** How much history there was when the current press began. */
+  private historyAtDown = 0;
   private attached = false;
   /** Earlier versions of the hole, newest last, for undo. */
   private history: CustomHole[] = [];
@@ -178,6 +183,10 @@ export class HoleEditor {
       el('label', { class: 'editor__toggle' }, [this.downToggle, el('span', { text: 'Down' })]),
       el('label', { class: 'editor__toggle' }, [this.wallsToggle, el('span', { text: 'Walls' })]),
       el('label', { class: 'editor__toggle' }, [this.turnToggle, el('span', { text: 'Turn' })]),
+      button('Fit', () => this.frame(), {
+        class: 'btn--ghost',
+        attrs: { title: 'Show the whole board (pinch or scroll to zoom)' },
+      }),
       (this.undoButton = button('Undo', () => this.undo(), {
         class: 'btn--ghost',
         attrs: { title: 'Undo (Ctrl+Z)' },
@@ -216,6 +225,7 @@ export class HoleEditor {
     c.addEventListener('pointerup', this.onUp);
     c.addEventListener('pointercancel', this.onCancel);
     c.addEventListener('lostpointercapture', this.onCancel);
+    c.addEventListener('wheel', this.onWheel, { passive: false });
     window.addEventListener('keydown', this.onKey);
     this.frame();
   }
@@ -230,6 +240,7 @@ export class HoleEditor {
     c.removeEventListener('pointerup', this.onUp);
     c.removeEventListener('pointercancel', this.onCancel);
     c.removeEventListener('lostpointercapture', this.onCancel);
+    c.removeEventListener('wheel', this.onWheel);
     window.removeEventListener('keydown', this.onKey);
     // A finger still down as the editor closed never sends its pointerup here;
     // forget it, or the editor ignores every touch when it opens again.
@@ -237,6 +248,8 @@ export class HoleEditor {
     this.pendingStart = null;
     this.pending = null;
     this.grab = null;
+    this.touches.clear();
+    this.pinch = null;
   }
 
   /** Frames the editing area, leaving room for the bars. */
@@ -305,20 +318,88 @@ export class HoleEditor {
 
   /* ------------------------------------------------------------ pointer */
 
-  private worldPoint(event: PointerEvent): Vec2 {
+  private screenPoint(event: PointerEvent | WheelEvent): Vec2 {
     const rect = this.host.canvas.getBoundingClientRect();
-    const p = this.host.camera.screenToWorld({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  private worldPoint(event: PointerEvent): Vec2 {
+    const p = this.host.camera.screenToWorld(this.screenPoint(event));
     return {
       x: clamp(Math.round(p.x), CUSTOM_BOUNDS.minX, CUSTOM_BOUNDS.maxX),
       y: clamp(Math.round(p.y), CUSTOM_BOUNDS.minY, CUSTOM_BOUNDS.maxY),
     };
   }
 
+  /** Pointer capture, which throws for a pointer the browser no longer knows. */
+  private capture(pointerId: number, on: boolean): void {
+    try {
+      if (on) this.host.canvas.setPointerCapture?.(pointerId);
+      else this.host.canvas.releasePointerCapture?.(pointerId);
+    } catch {
+      // Already gone: nothing to hold or let go of.
+    }
+  }
+
+  /** Zoom limits: from a little wider than the board to close work. */
+  private zoomRange(): [number, number] {
+    const fit = this.host.camera.fit(CUSTOM_BOUNDS, 70, 1.2);
+    return [fit * 0.85, Math.max(fit * 4, 1.6)];
+  }
+
+  private onWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const camera = this.host.camera;
+    const [min, max] = this.zoomRange();
+    const zoom = clamp(camera.zoom * Math.exp(-event.deltaY * 0.0015), min, max);
+    camera.zoomAround(this.screenPoint(event), zoom);
+  };
+
+  /** Two fingers down: whatever the first one started is not an edit. */
+  private startPinch(): void {
+    if (this.pointerId !== null) {
+      this.capture(this.pointerId, false);
+      this.pointerId = null;
+      // The first finger may already have placed or moved something.
+      if (this.history.length > this.historyAtDown) {
+        this.hole = this.history.pop()!;
+        this.changed();
+        this.undoButton.disabled = this.history.length === 0;
+      }
+    }
+    this.endGesture();
+    const [a, b] = [...this.touches.values()];
+    this.pinch = { distance: V.distance(a!, b!), center: V.lerpVec(a!, b!, 0.5) };
+  }
+
+  private movePinch(): void {
+    const pinch = this.pinch;
+    if (!pinch) return;
+    const [a, b] = [...this.touches.values()];
+    const distance = V.distance(a!, b!);
+    const center = V.lerpVec(a!, b!, 0.5);
+    const camera = this.host.camera;
+    const [min, max] = this.zoomRange();
+    const zoom =
+      pinch.distance > 1 ? clamp(camera.zoom * (distance / pinch.distance), min, max) : camera.zoom;
+    camera.zoomAround(pinch.center, zoom, center);
+    this.pinch = { distance, center };
+  }
+
   private onDown = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch') {
+      this.touches.set(event.pointerId, this.screenPoint(event));
+      if (this.touches.size === 2) {
+        this.startPinch();
+        return;
+      }
+      if (this.touches.size > 2 || this.pinch) return;
+    }
     if (event.button !== 0 || this.pointerId !== null) return;
+    this.historyAtDown = this.history.length;
     const p = this.worldPoint(event);
     this.pointerId = event.pointerId;
-    this.host.canvas.setPointerCapture?.(event.pointerId);
+    this.capture(event.pointerId, true);
     const tool = this.tool;
 
     if (tool === 'move') {
@@ -359,6 +440,13 @@ export class HoleEditor {
   };
 
   private onMove = (event: PointerEvent): void => {
+    if (this.touches.has(event.pointerId)) {
+      this.touches.set(event.pointerId, this.screenPoint(event));
+      if (this.pinch && this.touches.size >= 2) {
+        this.movePinch();
+        return;
+      }
+    }
     if (event.pointerId !== this.pointerId) return;
     const p = this.worldPoint(event);
     const pending = this.pending;
@@ -414,9 +502,10 @@ export class HoleEditor {
   };
 
   private onUp = (event: PointerEvent): void => {
+    this.liftTouch(event);
     if (event.pointerId !== this.pointerId) return;
     this.pointerId = null;
-    this.host.canvas.releasePointerCapture?.(event.pointerId);
+    this.capture(event.pointerId, false);
     const pending = this.pending;
     this.pending = null;
     this.pendingStart = null;
@@ -439,7 +528,20 @@ export class HoleEditor {
     }
   };
 
+  /** A finger off the glass; the pinch ends once every finger is. */
+  private liftTouch(event: PointerEvent): void {
+    if (!this.touches.delete(event.pointerId)) return;
+    if (this.touches.size < 2 && this.pinch) {
+      const rest = [...this.touches.values()];
+      // The pinch stays on while any finger does, so one left resting on the
+      // glass cannot start drawing by accident.
+      if (rest.length === 0) this.pinch = null;
+      else this.pinch = { distance: 0, center: rest[0]! };
+    }
+  }
+
   private onCancel = (event: PointerEvent): void => {
+    this.liftTouch(event);
     if (event.pointerId !== this.pointerId) return;
     this.pointerId = null;
     this.pending = null;

@@ -1181,6 +1181,65 @@ test.describe('hole editor', () => {
     expect(await page.evaluate(() => localStorage.getItem('gravity-golf/custom-draft'))).toContain('Their Hole');
   });
 
+  test('the board zooms with a wheel or a pinch, and a pinch places nothing', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    const state = () =>
+      page.evaluate(() => {
+        const app = window.gravityGolf as unknown as {
+          renderer: { camera: { zoom: number } };
+          editor: { hole: { items: unknown[]; stars: unknown[] } };
+        };
+        return {
+          zoom: app.renderer.camera.zoom,
+          items: app.editor.hole.items.length,
+          stars: app.editor.hole.stars.length,
+        };
+      });
+    const start = await state();
+    const box = (await page.locator('canvas').boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.wheel(0, -400);
+    await expect.poll(async () => (await state()).zoom).toBeGreaterThan(start.zoom * 1.2);
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
+    expect((await state()).zoom).toBeCloseTo(start.zoom, 5);
+
+    // Two fingers spreading, with the Star tool armed: zooms in, adds no star.
+    await page.getByRole('button', { name: 'Star', exact: true }).click();
+    await page.evaluate(
+      ({ cx, cy }) => {
+        const canvas = document.querySelector('canvas')!;
+        const fire = (type: string, id: number, x: number, y: number) =>
+          canvas.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: id,
+              pointerType: 'touch',
+              clientX: x,
+              clientY: y,
+              button: type === 'pointermove' ? -1 : 0,
+              bubbles: true,
+            }),
+          );
+        fire('pointerdown', 11, cx - 20, cy);
+        fire('pointerdown', 12, cx + 20, cy);
+        for (let i = 1; i <= 5; i++) {
+          fire('pointermove', 11, cx - 20 - i * 12, cy);
+          fire('pointermove', 12, cx + 20 + i * 12, cy);
+        }
+        fire('pointerup', 11, cx - 80, cy);
+        fire('pointerup', 12, cx + 80, cy);
+      },
+      { cx, cy },
+    );
+    const after = await state();
+    expect(after.zoom).toBeGreaterThan(start.zoom * 1.5);
+    expect(after.stars).toBe(start.stars);
+    expect(after.items).toBe(start.items);
+  });
+
   test('a damaged custom link falls back to the title', async ({ page }) => {
     await page.goto('/?custom=notarealholeatall');
     await expect(page.getByRole('button', { name: /^(Play|Continue)$/ })).toBeVisible();
