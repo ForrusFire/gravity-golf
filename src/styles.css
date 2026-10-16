@@ -252,6 +252,10 @@ body.loading::after {
   color: var(--good);
 }
 
+.hud__stat-value--par.is-last {
+  color: var(--gold);
+}
+
 .hud__stat-value--par.is-over {
   color: var(--bad);
 }
@@ -347,6 +351,9 @@ body.loading::after {
   width: max-content;
   max-width: 92vw;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+  /* A soft pool of shade, so a wall or a star under the name cannot fight it. */
+  padding: 1.1rem 2.6rem;
+  background: radial-gradient(closest-side, rgba(4, 6, 18, 0.62), rgba(4, 6, 18, 0.35) 60%, transparent);
 }
 
 .hud__intro--show {
@@ -379,7 +386,7 @@ body.loading::after {
     letter-spacing: 0.1em;
   }
   18%,
-  70% {
+  58% {
     opacity: 1;
     transform: translate(-50%, -50%);
   }

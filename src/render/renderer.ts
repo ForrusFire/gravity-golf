@@ -35,6 +35,8 @@ export interface AimState {
   /** Sampled preview path, world space. Empty hides the guide. */
   preview: Vec2[];
   previewOutcome: 'sink' | 'death' | 'rest' | 'truncated';
+  /** The pointer drag, in screen pixels, when aiming by drag. */
+  drag?: { from: Vec2; to: Vec2 } | null;
 }
 
 export interface RenderOptions {
@@ -272,9 +274,44 @@ export class Renderer {
     if (!options.reducedMotion) this.drawFlash(ctx, scene.time);
     this.drawFade(ctx, scene.time);
     if (!scene.backdrop) this.drawOffscreenMarker(ctx, scene, options.palette);
+    if (scene.aim?.drag) this.drawDragLine(ctx, scene.aim, options.palette);
     if (!scene.backdrop && scene.world.gravitySpin) {
       this.drawGravityDial(ctx, scene.world, options.palette, scene.ballReady === true);
     }
+  }
+
+  /**
+   * The drag itself, under the finger: an anchor where it began and a line to
+   * where it is. A drag can start anywhere, so without this a pull made far
+   * from the ball has nothing at hand to show it is working.
+   */
+  private drawDragLine(ctx: CanvasRenderingContext2D, aim: AimState, palette: Palette): void {
+    const drag = aim.drag!;
+    const length = V.distance(drag.from, drag.to);
+    if (length < 4) return;
+    const color = powerColor(aim.power, palette);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([2, 7]);
+    ctx.beginPath();
+    ctx.moveTo(drag.from.x, drag.from.y);
+    ctx.lineTo(drag.to.x, drag.to.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(drag.from.x, drag.from.y, 7, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(drag.to.x, drag.to.y, 4, 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
 
   /**
@@ -2304,16 +2341,19 @@ export class Renderer {
     palette: Palette,
   ): void {
     const color = powerColor(aim.power, palette);
-    const unit = 1 / Math.max(this.camera.zoom, 0.35);
+    const unit = 1 / Math.max(this.camera.zoom, 0.2);
+    // Sized on screen when the view is pulled back, as the ball itself is.
+    const size = Math.max(1, unit * 0.6);
+    const drawn = Math.max(ballRadius, 3.4 * unit);
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     // Pull-back: a tapering band behind the ball, like a stretched sling.
-    const pull = 20 + aim.power * 70;
+    const pull = (20 + aim.power * 70) * size;
     const back = V.addScaled(aim.origin, aim.direction, -pull);
     const side = V.perp(aim.direction);
-    const width = ballRadius * (0.9 + aim.power * 0.5);
+    const width = drawn * (0.9 + aim.power * 0.5);
     const grad = ctx.createLinearGradient(aim.origin.x, aim.origin.y, back.x, back.y);
     grad.addColorStop(0, withAlpha(color, 0.5));
     grad.addColorStop(1, withAlpha(color, 0));
@@ -2393,10 +2433,10 @@ export class Renderer {
 
     // Power ring around the ball, on a faint track so a low-power shot still
     // shows how much room is left.
-    const ringRadius = ballRadius + 7;
+    const ringRadius = drawn + 7 * size;
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 3.5 * size;
     ctx.beginPath();
     ctx.arc(aim.origin.x, aim.origin.y, ringRadius, 0, TAU);
     ctx.stroke();
@@ -2415,7 +2455,7 @@ export class Renderer {
     // The number, behind the ball where the finger is not.
     const labelAt = V.addScaled(aim.origin, aim.direction, -(pull + 16 * unit));
     ctx.globalAlpha = 0.92;
-    ctx.font = `700 ${12 * unit}px system-ui, sans-serif`;
+    ctx.font = `800 ${15 * unit}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 3 * unit;

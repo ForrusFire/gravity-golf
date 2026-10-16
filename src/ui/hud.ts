@@ -2,7 +2,7 @@ import { clamp } from '../core/math';
 import type { LevelDef } from '../game/level';
 import type { PlaySession } from '../game/session';
 import { icon, type IconName } from './icons';
-import { button, clear, el, formatToPar } from './dom';
+import { button, clear, el } from './dom';
 
 export interface HudCallbacks {
   onPause(): void;
@@ -90,7 +90,9 @@ export class Hud {
             this.strokeValue,
           ]),
           el('span', { class: 'hud__stat' }, [
-            el('span', { class: 'hud__stat-label', text: 'To par' }),
+            // Strokes left to make par, not a score: the hole is not over yet,
+            // and "-1" after one shot read as already being under.
+            el('span', { class: 'hud__stat-label', text: 'For par' }),
             this.toParValue,
           ]),
           this.starHolder,
@@ -157,11 +159,15 @@ export class Hud {
       this.strokeValue.textContent = strokes;
       bump(this.strokeValue);
     }
-    const toPar = formatToPar(session.strokes, session.level.par);
-    this.toParValue.textContent = toPar;
-    const played = session.strokes > 0;
-    this.toParValue.classList.toggle('is-over', played && session.strokes > session.level.par);
-    this.toParValue.classList.toggle('is-under', played && session.strokes < session.level.par);
+    const left = session.level.par - session.strokes;
+    this.toParValue.textContent = left >= 0 ? String(left) : `+${-left}`;
+    this.toParValue.setAttribute(
+      'aria-label',
+      left > 0 ? `${left} for par` : left === 0 ? 'Par used up' : `${-left} over par`,
+    );
+    this.toParValue.classList.toggle('is-last', left === 0);
+    this.toParValue.classList.toggle('is-over', left < 0);
+    this.toParValue.classList.remove('is-under');
 
     const total = session.totalStars;
     const earned = session.starCount;

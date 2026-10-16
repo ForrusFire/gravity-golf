@@ -186,6 +186,9 @@ test.describe('playing a hole', () => {
     await expect(page.locator('.results')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.results__title')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Next hole' })).toBeVisible();
+    // Stars are a count of what was picked up, and a retry offers to go back for them.
+    await expect(page.locator('.results__stars-label')).toHaveText('Stars picked up: 0 of 3');
+    await expect(page.getByRole('button', { name: 'Retry for stars' })).toBeVisible();
 
     const saved = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('gravity-golf/progress') ?? '{}'),

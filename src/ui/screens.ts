@@ -306,6 +306,8 @@ export interface ResultsCallbacks {
   streak?: number;
   /** Chapters this result's stars just opened. */
   unlocked?: string[];
+  /** Stars the hole has to find (a custom hole may have none). */
+  totalStars?: number;
 }
 
 export const resultsScreen = (
@@ -336,13 +338,20 @@ export const resultsScreen = (
       statBlock('To par', formatToPar(result.strokes, result.par)),
       statBlock('Time', formatTime(result.time)),
     ]),
-    el('div', { class: 'results__stars' }, [
-      starRow(result.stars),
-      el('span', {
-        class: 'results__stars-label',
-        text: result.stars === 3 ? 'All stars collected' : `${result.stars} of 3 stars`,
-      }),
-    ]),
+    // Stars are pickups along the way, not a grade: said as a count of what
+    // was found, so an ace with none of them does not read as a failure.
+    (callbacks.totalStars ?? 3) > 0
+      ? el('div', { class: 'results__stars' }, [
+          starRow(result.stars, callbacks.totalStars ?? 3),
+          el('span', {
+            class: 'results__stars-label',
+            text:
+              result.stars >= (callbacks.totalStars ?? 3)
+                ? 'Every star picked up'
+                : `Stars picked up: ${result.stars} of ${callbacks.totalStars ?? 3}`,
+          }),
+        ])
+      : null,
     result.feats.length > 0
       ? el(
           'div',
@@ -370,7 +379,10 @@ export const resultsScreen = (
         ? button('Next hole', callbacks.onNext, { class: 'btn--primary' })
         : button(callbacks.levelsLabel ?? 'Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
       el('div', { class: 'results__row' }, [
-        button('Retry', callbacks.onRetry),
+        button(
+          result.stars < (callbacks.totalStars ?? 3) ? 'Retry for stars' : 'Retry',
+          callbacks.onRetry,
+        ),
         callbacks.onReplay ? button('Watch replay', callbacks.onReplay) : null,
       ]),
       callbacks.onShare

@@ -88,6 +88,11 @@ export class InputController {
   }
 
   /** Current aim, or null when the player is not aiming. */
+  /** The drag in progress, canvas pixels: where it began and where it is. */
+  get dragLine(): { from: Vec2; to: Vec2 } | null {
+    return this.dragging ? { from: this.dragStart, to: this.dragCurrent } : null;
+  }
+
   get aim(): AimInput | null {
     if (this.dragging) {
       const drag = V.sub(this.dragCurrent, this.dragStart);

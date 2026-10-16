@@ -591,6 +591,7 @@ export class GameApp {
       power: input.power,
       preview,
       previewOutcome: outcome,
+      drag: this.input.dragLine,
     };
   }
 
@@ -1027,6 +1028,7 @@ export class GameApp {
             previousBest,
             streak,
             unlocked,
+            totalStars: session.totalStars,
             onNext: () => upcoming && this.playLevel(upcoming),
             onRetry: () => this.playLevel(session.level),
             onLevels: () => this.leaveHole(session.level),
