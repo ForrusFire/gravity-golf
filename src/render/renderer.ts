@@ -116,9 +116,15 @@ export class Renderer {
   }
 
   /** Sizes the backing store to the element, accounting for HiDPI displays. */
+  /**
+   * The highest backing-store ratio allowed. Lowered at run time when frames
+   * come too slowly, on devices that rasterise the canvas on the CPU.
+   */
+  maxPixelRatio = 2;
+
   resize(cssWidth: number, cssHeight: number, pixelRatio = window.devicePixelRatio || 1): void {
     // Cap the ratio: a 3x buffer on a large screen costs more than it shows.
-    this.pixelRatio = clamp(pixelRatio, 1, 2);
+    this.pixelRatio = clamp(pixelRatio, 1, this.maxPixelRatio);
     this.canvas.width = Math.max(1, Math.round(cssWidth * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.round(cssHeight * this.pixelRatio));
     this.canvas.style.width = `${cssWidth}px`;

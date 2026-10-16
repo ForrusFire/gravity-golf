@@ -363,8 +363,33 @@ export class GameApp {
     if (document.hidden && this.screen === 'play') this.pause();
   };
 
+  /** Recent frame intervals in ms, for adaptive resolution. */
+  private frameSamples: number[] = [];
+
+  /**
+   * Steps the canvas resolution down when frames keep coming slowly. On a
+   * device that rasterises the canvas on the CPU, pixel count is nearly all
+   * of the cost: halving the ratio took one such frame from 50ms to 17ms. It
+   * only ever steps down, so it cannot see-saw.
+   */
+  private adaptResolution(intervalMs: number): void {
+    // A hidden tab or a breakpoint is not a slow device.
+    if (intervalMs > 250 || document.hidden) return;
+    this.frameSamples.push(intervalMs);
+    if (this.frameSamples.length < 120) return;
+    const sorted = [...this.frameSamples].sort((a, b) => a - b);
+    this.frameSamples = [];
+    const median = sorted[Math.floor(sorted.length / 2)]!;
+    const renderer = this.renderer;
+    if (median > 24 && renderer.maxPixelRatio > 1) {
+      renderer.maxPixelRatio = renderer.maxPixelRatio > 1.5 ? 1.5 : 1;
+      this.handleResize();
+    }
+  }
+
   private frame = (now: number): void => {
     if (!this.running) return;
+    this.adaptResolution(now - this.lastFrameTime);
     const dt = clamp((now - this.lastFrameTime) / 1000, 0, 0.1);
     this.lastFrameTime = now;
     this.update(dt);
