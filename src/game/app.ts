@@ -1029,6 +1029,10 @@ export class GameApp {
             streak,
             unlocked,
             totalStars: session.totalStars,
+            starMap: {
+              level: session.level,
+              collected: session.world.collectibles.map((c) => c.collected),
+            },
             onNext: () => upcoming && this.playLevel(upcoming),
             onRetry: () => this.playLevel(session.level),
             onLevels: () => this.leaveHole(session.level),

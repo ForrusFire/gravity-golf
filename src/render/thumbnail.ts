@@ -57,7 +57,13 @@ const paint = (
  * canvas. Enough to recognise a hole at a glance on the select screen — the
  * names alone stop meaning anything after the first dozen.
  */
-export const drawThumbnail = (canvas: HTMLCanvasElement, level: LevelDef, scale = 2): void => {
+export const drawThumbnail = (
+  canvas: HTMLCanvasElement,
+  level: LevelDef,
+  scale = 2,
+  /** Per star, whether it was picked up: those are dimmed, the rest ringed. */
+  collected?: readonly boolean[],
+): void => {
   const width = 160;
   const height = 90;
   canvas.width = Math.round(width * scale);
@@ -134,12 +140,23 @@ export const drawThumbnail = (canvas: HTMLCanvasElement, level: LevelDef, scale 
 
   // Stars, tee and cup sized in screen pixels so they read at any hole size.
   const px = 1 / zoom;
-  ctx.fillStyle = '#ffd25a';
-  for (const star of level.stars ?? []) {
+  (level.stars ?? []).forEach((star, i) => {
+    const got = collected?.[i];
+    ctx.globalAlpha = got ? 0.3 : 1;
+    ctx.fillStyle = '#ffd25a';
     ctx.beginPath();
     ctx.arc(star.x, star.y, 2.6 * px * scale, 0, TAU);
     ctx.fill();
-  }
+    if (collected && !got) {
+      // Missed: ringed, so the map says where to go back for it.
+      ctx.strokeStyle = 'rgba(255,210,90,0.8)';
+      ctx.lineWidth = 1.2 * px * scale;
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, 6.5 * px * scale, 0, TAU);
+      ctx.stroke();
+    }
+  });
+  ctx.globalAlpha = 1;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.arc(level.tee.x, level.tee.y, 3 * px * scale, 0, TAU);

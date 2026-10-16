@@ -848,6 +848,14 @@ body.loading::after {
   margin-bottom: 1rem;
 }
 
+.results__star-map {
+  width: 160px;
+  height: 90px;
+  margin-top: 0.3rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
 .results__stars .star {
   font-size: 1.7rem;
 }

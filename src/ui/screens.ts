@@ -311,6 +311,8 @@ export interface ResultsCallbacks {
   unlocked?: string[];
   /** Stars the hole has to find (a custom hole may have none). */
   totalStars?: number;
+  /** The hole and which of its stars were picked up, to map the missed ones. */
+  starMap?: { level: LevelDef; collected: boolean[] };
 }
 
 export const resultsScreen = (
@@ -353,6 +355,16 @@ export const resultsScreen = (
                 ? 'Every star picked up'
                 : `Stars picked up: ${result.stars} of ${callbacks.totalStars ?? 3}`,
           }),
+          callbacks.starMap && result.stars < (callbacks.totalStars ?? 3)
+            ? (() => {
+                const canvas = el('canvas', {
+                  class: 'results__star-map',
+                  attrs: { role: 'img', 'aria-label': 'Map of the hole, with the missed stars ringed' },
+                });
+                drawThumbnail(canvas, callbacks.starMap.level, 2, callbacks.starMap.collected);
+                return canvas;
+              })()
+            : null,
         ])
       : null,
     result.feats.length > 0
