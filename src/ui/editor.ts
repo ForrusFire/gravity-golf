@@ -61,8 +61,6 @@ const DEFAULT_RADIUS: Record<CustomBodyKind, number> = {
 };
 
 const DRAFT_KEY = 'gravity-golf/custom-draft';
-/** Where a hole opened from someone's link is kept, so it never replaces your own. */
-const SHARED_KEY = 'gravity-golf/custom-shared';
 
 export interface EditorHost {
   canvas: HTMLCanvasElement;
@@ -106,16 +104,17 @@ export class HoleEditor {
   /** Earlier versions of the hole, newest last, for undo. */
   private history: CustomHole[] = [];
   private undoButton!: HTMLButtonElement;
-
-  private readonly draftKey: string;
+  private keepButton!: HTMLButtonElement;
 
   constructor(
     private readonly host: EditorHost,
     hole?: CustomHole,
-    /** Editing a hole that came from a link: keep it apart from the draft. */
-    readonly shared = false,
+    /**
+     * Editing a hole that came from a link. Nothing is saved until it is kept,
+     * so opening someone's link can never replace your own draft.
+     */
+    public shared = false,
   ) {
-    this.draftKey = shared ? SHARED_KEY : DRAFT_KEY;
     this.hole = hole ? structuredClone(hole) : (loadDraft(DRAFT_KEY) ?? emptyCustomHole());
     this.world = compileLevel(customToLevel(this.hole));
 
@@ -184,7 +183,13 @@ export class HoleEditor {
         attrs: { title: 'Undo (Ctrl+Z)' },
       })),
       button('Clear', () => this.clear(), { class: 'btn--ghost' }),
-      button('Share', () => this.host.onShare(this.hole), { class: 'btn--ghost' }),
+      (this.keepButton = button('Keep as mine', () => this.keep(), {
+        class: 'btn--ghost',
+        attrs: { title: 'Make this hole your own draft' },
+      })),
+      // A copy: the check that follows takes a while, and the hole may be
+      // edited meanwhile.
+      button('Share', () => this.host.onShare(structuredClone(this.hole)), { class: 'btn--ghost' }),
       button('Test', () => this.test(), { class: 'btn--primary' }),
       button('Exit', () => this.host.onExit(), { class: 'btn--ghost' }),
     ]);
@@ -193,9 +198,10 @@ export class HoleEditor {
     this.renderToolbar();
     this.syncFields();
     this.undoButton.disabled = true;
+    this.keepButton.hidden = !shared;
     this.status(
       shared
-        ? 'Editing a shared hole — your own draft is left as it was'
+        ? 'Editing a shared hole — changes are not saved unless you keep it'
         : TOOLS.find((t) => t.id === this.tool)!.hint,
     );
   }
@@ -373,13 +379,24 @@ export class HoleEditor {
     }
     const grab = this.grab;
     if (!grab) return;
-    const target = V.add(p, grab.offset);
+    const target = inBounds(V.add(p, grab.offset));
     if (grab.kind === 'item') {
-      const item = this.hole.items[grab.index]!;
+      const item = this.hole.items[grab.index];
+      if (!item) return;
       if (item.t === 'wall' || item.t === 'portal') {
         const mid = { x: (item.x1 + item.x2) / 2, y: (item.y1 + item.y2) / 2 };
-        const dx = Math.round(target.x - mid.x);
-        const dy = Math.round(target.y - mid.y);
+        // Both ends stay inside, or the hole would come back bent from a link.
+        const b = CUSTOM_BOUNDS;
+        const dx = clamp(
+          Math.round(target.x - mid.x),
+          b.minX - Math.min(item.x1, item.x2),
+          b.maxX - Math.max(item.x1, item.x2),
+        );
+        const dy = clamp(
+          Math.round(target.y - mid.y),
+          b.minY - Math.min(item.y1, item.y2),
+          b.maxY - Math.max(item.y1, item.y2),
+        );
         item.x1 += dx;
         item.x2 += dx;
         item.y1 += dy;
@@ -490,6 +507,7 @@ export class HoleEditor {
   undo(): void {
     const previous = this.history.pop();
     if (!previous) return;
+    this.endGesture();
     this.hole = previous;
     this.changed();
     this.undoButton.disabled = this.history.length === 0;
@@ -499,7 +517,8 @@ export class HoleEditor {
   private onKey = (event: KeyboardEvent): void => {
     const target = event.target as HTMLElement | null;
     if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-    if (event.code === 'KeyZ' && (event.ctrlKey || event.metaKey || !event.shiftKey)) {
+    // Z or Ctrl/Cmd+Z; with Shift it is redo elsewhere, so leave it be.
+    if (event.code === 'KeyZ' && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       this.undo();
     }
@@ -511,8 +530,29 @@ export class HoleEditor {
     this.changed();
   }
 
+  /** Drops a drag or placement in progress: it was about the hole as it was. */
+  private endGesture(): void {
+    this.grab = null;
+    this.pending = null;
+    this.pendingStart = null;
+  }
+
+  /** Makes a shared hole your own draft, after asking if that replaces one. */
+  private keep(): void {
+    if (!this.shared) return;
+    if (loadDraft(DRAFT_KEY)) {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm('Replace your own hole with this one?')) return;
+    }
+    this.shared = false;
+    this.keepButton.hidden = true;
+    saveDraft(DRAFT_KEY, this.hole);
+    this.status('Kept — this is your hole now', 'good');
+  }
+
   private clear(): void {
     this.checkpoint();
+    this.endGesture();
     this.hole = emptyCustomHole();
     this.changed();
     this.status('Started a fresh hole');
@@ -530,7 +570,7 @@ export class HoleEditor {
   /** After any edit: rebuild the world, save the draft, refresh the bars. */
   private changed(refreshFields = true): void {
     this.world = compileLevel(customToLevel(this.hole));
-    saveDraft(this.draftKey, this.hole);
+    if (!this.shared) saveDraft(DRAFT_KEY, this.hole);
     if (refreshFields) this.syncFields();
   }
 
@@ -562,6 +602,11 @@ export class HoleEditor {
     );
   }
 }
+
+const inBounds = (p: Vec2): Vec2 => ({
+  x: clamp(p.x, CUSTOM_BOUNDS.minX, CUSTOM_BOUNDS.maxX),
+  y: clamp(p.y, CUSTOM_BOUNDS.minY, CUSTOM_BOUNDS.maxY),
+});
 
 const distanceToSegment = (p: Vec2, a: Vec2, b: Vec2): number => {
   const ab = V.sub(b, a);

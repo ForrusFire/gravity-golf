@@ -219,6 +219,10 @@ export class GameApp {
     this.handleResize();
     window.addEventListener('resize', this.handleResize);
     document.addEventListener('visibilitychange', this.handleVisibility);
+    // Any touch or key is a gesture that lets sound back in after the system
+    // took it away — on a menu as much as on the canvas.
+    document.addEventListener('pointerdown', this.wakeAudio, true);
+    document.addEventListener('keydown', this.wakeAudio, true);
 
     // A shared link goes straight to the hole it names; the title screen is what
     // you get when nobody sent you anywhere.
@@ -350,6 +354,8 @@ export class GameApp {
     this.generator.dispose();
     window.removeEventListener('resize', this.handleResize);
     document.removeEventListener('visibilitychange', this.handleVisibility);
+    document.removeEventListener('pointerdown', this.wakeAudio, true);
+    document.removeEventListener('keydown', this.wakeAudio, true);
   }
 
   private handleResize = (): void => {
@@ -357,6 +363,10 @@ export class GameApp {
     this.renderer.resize(rect.width || window.innerWidth, rect.height || window.innerHeight);
     if (this.session) this.refitCamera();
     if (this.screen === 'editor') this.editor?.frame();
+  };
+
+  private wakeAudio = (): void => {
+    if (!document.hidden) this.audio.resume();
   };
 
   private handleVisibility = (): void => {
@@ -1143,9 +1153,15 @@ export class GameApp {
   /** Where "back to holes" goes: the editor for a custom hole, else the list. */
   private leaveHole(level: LevelDef): void {
     const tagged = level as LevelDef & { custom?: CustomHole; sharedCustom?: boolean };
-    if (!tagged.custom) this.showLevels();
-    else if (tagged.sharedCustom) this.showEditor(tagged.custom, true);
-    else this.showEditor(tagged.custom);
+    if (!tagged.custom) {
+      this.showLevels();
+      return;
+    }
+    const shared = tagged.sharedCustom === true;
+    // Back to the editor it was tested from, undo history and all. Only a hole
+    // that arrived by link, with no editor open on it yet, needs a fresh one.
+    if (this.editor && this.editor.shared === shared) this.showEditor(undefined, shared);
+    else this.showEditor(tagged.custom, shared);
   }
 
   /** Opens the hole editor, on `hole` when given, otherwise on the draft. */
@@ -1157,14 +1173,17 @@ export class GameApp {
     this.clearUrl();
     this.overlay.hide();
     this.hud.setVisible(false);
-    if (!this.editor || hole) {
+    // A shared hole's editor is not the one "Create" should open, nor the
+    // other way round.
+    if (!this.editor || hole || this.editor.shared !== shared) {
       this.editor?.dispose();
-      this.editor = new HoleEditor(
+      const editor: HoleEditor = new HoleEditor(
         {
           canvas: this.renderer.canvas,
           camera: this.renderer.camera,
+          // Read at test time: a shared hole can be kept as your own meanwhile.
           onTest: (custom) =>
-            this.playLevel({ ...customToLevel(custom), sharedCustom: shared } as LevelDef),
+            this.playLevel({ ...customToLevel(custom), sharedCustom: editor.shared } as LevelDef),
           onShare: (custom) => void this.shareCustom(custom),
           onExit: () => this.showTitle(),
           onClick: () => this.audio.play('click'),
@@ -1172,6 +1191,7 @@ export class GameApp {
         hole,
         shared,
       );
+      this.editor = editor;
     }
     this.renderer.resetDecor();
     this.renderer.particles.clear();
@@ -1187,9 +1207,17 @@ export class GameApp {
       editor.status(`Fix this first: ${problems[0]}`, 'bad');
       return;
     }
-    // Before handing a hole to someone else, look for a way to sink it within
-    // its par — the same search the hint uses, from the tee.
-    editor.status('Checking it can be done…');
+    // Copied straight away, while the click still counts as a gesture: some
+    // browsers refuse the clipboard a few seconds later.
+    const url = shareUrl({ kind: 'custom', code: encodeCustomHole(hole) }, window.location);
+    const copying = navigator.clipboard?.writeText(url).then(
+      () => true,
+      () => false,
+    ) ?? Promise.resolve(false);
+
+    // Then, before anyone else tries it, look for a way to sink it within its
+    // par — the same search the hint uses, from the tee.
+    editor.status('Link made — checking it can be done…');
     const level = customToLevel(hole);
     const verdict = await this.generator.hint({
       level,
@@ -1201,15 +1229,9 @@ export class GameApp {
       horizon: Math.min(hole.par, 5),
       budgetMs: 8000,
     });
+    const copied = await copying;
     if (this.editor !== editor || this.screen !== 'editor') return;
 
-    const url = shareUrl({ kind: 'custom', code: encodeCustomHole(hole) }, window.location);
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      copied = false;
-    }
     const found = verdict?.sinks === true;
     const what = found
       ? `Sinkable in ${verdict!.strokes} — `

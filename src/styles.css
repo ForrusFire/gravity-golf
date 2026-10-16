@@ -20,6 +20,11 @@
   box-sizing: border-box;
 }
 
+/* A component's own display rule must not bring back something hidden. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;

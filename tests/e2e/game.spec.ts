@@ -1065,6 +1065,8 @@ test.describe('hole editor', () => {
           .hole.items,
     );
     expect(items.some((item) => item.t === 'bumper')).toBe(true);
+    // The same editor, so the placement can still be taken back.
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 
     // And the draft is still there after a reload.
     await page.reload();
@@ -1144,6 +1146,39 @@ test.describe('hole editor', () => {
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     expect(await count()).toBe(start);
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+  });
+
+  test('a shared hole is only saved once kept, and Create opens your own', async ({ page }) => {
+    const hole = () =>
+      page.evaluate(
+        () => (window.gravityGolf as unknown as { editor: { hole: { name: string } } }).editor.hole.name,
+      );
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('gravity-golf/custom-draft'));
+    const { emptyCustomHole, encodeCustomHole } = await import('../../src/game/custom');
+    const theirs = emptyCustomHole();
+    theirs.name = 'Their Hole';
+    await page.goto(`/?custom=${encodeCustomHole(theirs)}`);
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10_000 }).toBe('custom');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Select hole' }).click();
+    await expect(page.locator('.editor')).toBeVisible();
+    expect(await hole()).toBe('Their Hole');
+
+    // Out to the title and into Create, in the same visit: your own, not theirs.
+    await page.getByRole('button', { name: 'Exit', exact: true }).click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    expect(await hole()).not.toBe('Their Hole');
+    expect(await page.evaluate(() => localStorage.getItem('gravity-golf/custom-draft'))).toBeNull();
+
+    // Kept: now it is the draft.
+    await page.goto(`/?custom=${encodeCustomHole(theirs)}`);
+    await expect.poll(async () => (await sessionState(page))?.levelId, { timeout: 10_000 }).toBe('custom');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Select hole' }).click();
+    await page.getByRole('button', { name: 'Keep as mine', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Keep as mine', exact: true })).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem('gravity-golf/custom-draft'))).toContain('Their Hole');
   });
 
   test('a damaged custom link falls back to the title', async ({ page }) => {

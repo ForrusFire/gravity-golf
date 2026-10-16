@@ -239,6 +239,8 @@ export class InputController {
         this.callbacks.onCancel();
         return;
       }
+      // A third finger, or a palm, mid-pinch: still a pinch, never a shot.
+      if (this.touches.size > 2) return;
     }
 
     // Secondary/middle button pans.
@@ -268,7 +270,7 @@ export class InputController {
 
     if (event.pointerType === 'touch' && this.touches.has(event.pointerId)) {
       this.touches.set(event.pointerId, point);
-      if (this.touches.size === 2) {
+      if (this.touches.size >= 2) {
         const distance = this.currentPinchDistance();
         if (this.pinchDistance > 1 && distance > 1) {
           this.callbacks.onZoom(distance / this.pinchDistance, this.pinchCenter());

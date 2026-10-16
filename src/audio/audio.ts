@@ -340,13 +340,17 @@ export class AudioEngine {
 
   /** Which chapter's key and progression the music is in. */
   private mood = 0;
+  /** The mood asked for, applied when the next chord arrives. */
+  private nextMood = 0;
 
   /**
    * Sets the music's key and progression, so each chapter has a colour of its
    * own. Takes effect at the next chord change rather than mid-phrase.
    */
   setMood(index: number): void {
-    this.mood = Math.max(0, Math.floor(index));
+    this.nextMood = Math.max(0, Math.floor(index));
+    // Not playing yet: nothing to clash with.
+    if (!this.musicTimer) this.mood = this.nextMood;
   }
 
   /**
@@ -360,6 +364,7 @@ export class AudioEngine {
       // A suspended context's clock stands still: notes queued now would all
       // sound at once when it wakes.
       if (!this.ctx || this.ctx.state !== 'running' || this.musicVolume <= 0.001) return;
+      if (this.musicStep % 4 === 0) this.mood = this.nextMood;
       const mood = MOODS[this.mood % MOODS.length]!;
       const bar = Math.floor(this.musicStep / 4);
       const chord = mood.progression[bar % mood.progression.length]!;
@@ -381,17 +386,33 @@ export class AudioEngine {
     }, 1600);
   }
 
+  /** True while the page is out of sight and should make no sound. */
+  private hidden = false;
+
   /** Silences everything while the page is out of sight. */
   suspend(): void {
-    if (this.ctx?.state !== 'running') return;
+    this.hidden = true;
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'closed') return;
     this.setFlight(0);
-    this.ctx.suspend().catch(() => undefined);
+    ctx
+      .suspend()
+      // Shown again before the suspend landed: undo it.
+      .then(() => !this.hidden && this.resume())
+      .catch(() => undefined);
   }
 
-  /** Picks up again after `suspend`. Browsers allow this without a gesture once unlocked. */
+  /**
+   * Picks up again after `suspend`, or after the system took the sound away
+   * (iOS reports "interrupted" after a call or a trip to the home screen).
+   * Context operations run in order, so this is safe straight after a
+   * `suspend` that has not finished yet.
+   */
   resume(): void {
-    if (this.ctx?.state !== 'suspended' || this.failed) return;
-    this.ctx.resume().catch(() => undefined);
+    this.hidden = false;
+    const ctx = this.ctx;
+    if (!ctx || this.failed || ctx.state === 'closed' || ctx.state === 'running') return;
+    ctx.resume().catch(() => undefined);
   }
 
   stopMusic(): void {
