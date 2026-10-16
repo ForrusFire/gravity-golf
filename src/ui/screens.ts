@@ -41,6 +41,11 @@ export class Overlay {
       }
       if (event.key === 'Tab') this.trapFocus(event);
     });
+    // A click on the backdrop would otherwise drop focus to the page body,
+    // out of reach of the keys above — Escape included.
+    this.root.addEventListener('mousedown', (event) => {
+      if (event.target === this.root) event.preventDefault();
+    });
   }
 
   get visible(): boolean {
@@ -528,6 +533,18 @@ export const settingsScreen = (
       el('h3', { text: 'Ball' }),
       el('div', { class: 'skins' }, BALL_SKINS.map((skin) => {
         const unlocked = isSkinUnlocked(skin, stars);
+        const choose = (event: Event): void => {
+          if (!unlocked) return;
+          onChange({ ballSkin: skin.id });
+          // The panel is not rebuilt on a change, so move the mark by hand.
+          const button = event.currentTarget as HTMLElement;
+          for (const other of button.parentElement?.children ?? []) {
+            other.classList.toggle('skin--active', other === button);
+            if (!other.classList.contains('skin--locked')) {
+              other.setAttribute('aria-pressed', String(other === button));
+            }
+          }
+        };
         return el(
           'button',
           {
@@ -537,11 +554,12 @@ export const settingsScreen = (
             attrs: {
               type: 'button',
               disabled: !unlocked,
+              'aria-pressed': unlocked ? String(settings.ballSkin === skin.id) : undefined,
               'aria-label': unlocked
                 ? `${skin.name} ball`
                 : `${skin.name} ball, locked, needs ${skin.starsRequired} stars`,
             },
-            on: { click: () => unlocked && onChange({ ballSkin: skin.id }) },
+            on: { click: choose },
           },
           [
             el('span', {

@@ -360,7 +360,12 @@ export class GameApp {
   };
 
   private handleVisibility = (): void => {
-    if (document.hidden && this.screen === 'play') this.pause();
+    if (document.hidden) {
+      if (this.screen === 'play') this.pause();
+      this.audio.suspend();
+    } else {
+      this.audio.resume();
+    }
   };
 
   /** Recent frame intervals in ms, for adaptive resolution. */
@@ -771,6 +776,9 @@ export class GameApp {
   playLevel(level: LevelDef): void {
     this.editor?.detach();
     this.hintSession = null;
+    // Whatever was being watched is over once a hole is played for real.
+    this.replayState = null;
+    this.replayBadge?.remove();
     this.session = new PlaySession(level);
     this.syncUrl(level);
     if (!this.round && level.id !== 'custom') this.progress.countAttempt(level.id);
@@ -821,7 +829,7 @@ export class GameApp {
   /** Takes back the last shot. */
   private undo(): void {
     const session = this.session;
-    if (!session?.canUndo) return;
+    if (!session?.canUndo || this.screen !== 'play') return;
     if (!session.undo()) return;
     this.audio.play('back');
     this.trail = [];
@@ -1304,7 +1312,7 @@ export class GameApp {
 
   private retry(): void {
     const session = this.session;
-    if (!session) return;
+    if (!session || (this.screen !== 'play' && this.screen !== 'paused')) return;
     this.audio.play('back');
     this.playLevel(session.level);
   }
@@ -1317,6 +1325,11 @@ export class GameApp {
     if (session.state === 'sunk') return;
     this.screen = 'paused';
     this.audio.play('click');
+    this.showPausePanel(session);
+  }
+
+  /** The pause panel, the same whether pausing or coming back to it. */
+  private showPausePanel(session: PlaySession): void {
     this.overlay.show(
       pauseScreen(session.level, {
         onResume: () => this.resume(),
@@ -1464,6 +1477,7 @@ export class GameApp {
     // hole later would quietly count towards it.
     this.round = null;
     this.hud.setVisible(false);
+    this.renderer.camera.limits = null;
     this.overlay.show(
       levelSelectScreen(CHAPTERS, ALL_LEVELS, this.progress, {
         onPick: (level) => this.playLevel(level),
@@ -1543,17 +1557,7 @@ export class GameApp {
       this.showTitle();
       return;
     }
-    this.overlay.show(
-      pauseScreen(session.level, {
-        onResume: () => this.resume(),
-        onRetry: () => this.retry(),
-        onLevels: () => this.showLevels(),
-        onSettings: () => this.showSettings('paused'),
-        onTitle: () => this.showTitle(),
-        onShare: linkForLevel(session.level) ? () => void this.shareCurrentHole() : undefined,
-      }),
-      { onEscape: () => this.resume() },
-    );
+    this.showPausePanel(session);
   }
 
   private confirmResetProgress(): void {

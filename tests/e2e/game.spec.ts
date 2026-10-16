@@ -344,6 +344,37 @@ test.describe('menus', () => {
     await expect(page.getByRole('heading', { name: 'Paused' })).toBeHidden();
   });
 
+  test('the pause panel keeps the stroke count after a visit to settings', async ({ page }) => {
+    await startGame(page);
+    await shoot(page, 1, -0.2, 0.2);
+    await expect.poll(async () => (await sessionState(page))?.strokes).toBe(1);
+
+    await page.getByRole('button', { name: 'Pause' }).click();
+    const panel = page.locator('.panel');
+    await expect(panel).toContainText('1 stroke');
+    await panel.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Paused' })).toBeVisible();
+    await expect(panel).toContainText('1 stroke');
+  });
+
+  test('Escape still works after a click on the backdrop', async ({ page }) => {
+    await startGame(page);
+    await page.getByRole('button', { name: 'Pause' }).click();
+    await expect(page.getByRole('heading', { name: 'Paused' })).toBeVisible();
+    await page.mouse.click(3, 3);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: 'Paused' })).toBeHidden();
+  });
+
+  test('the hidden HUD takes no clicks or focus', async ({ page }) => {
+    await startGame(page);
+    await page.evaluate(() => window.gravityGolf.showLevels());
+    await expect(page.locator('.hud')).toHaveClass(/hud--hidden/);
+    await expect(page.locator('.hud')).toHaveJSProperty('inert', true);
+    await expect(page.getByRole('heading', { name: 'Select a hole' })).toBeVisible();
+  });
+
   test('level select lists holes and locks the ones not yet reached', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Select hole' }).click();

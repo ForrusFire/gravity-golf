@@ -247,6 +247,8 @@ export class Hud {
 
   setVisible(visible: boolean): void {
     this.root.classList.toggle('hud--hidden', !visible);
+    // Faded out is not enough: its buttons would still take clicks and focus.
+    this.root.inert = !visible;
   }
 }
 

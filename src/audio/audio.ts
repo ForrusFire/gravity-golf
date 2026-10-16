@@ -357,7 +357,9 @@ export class AudioEngine {
   startMusic(): void {
     if (!this.ctx || this.musicTimer || this.failed) return;
     this.musicTimer = setInterval(() => {
-      if (!this.ctx || this.musicVolume <= 0.001) return;
+      // A suspended context's clock stands still: notes queued now would all
+      // sound at once when it wakes.
+      if (!this.ctx || this.ctx.state !== 'running' || this.musicVolume <= 0.001) return;
       const mood = MOODS[this.mood % MOODS.length]!;
       const bar = Math.floor(this.musicStep / 4);
       const chord = mood.progression[bar % mood.progression.length]!;
@@ -377,6 +379,19 @@ export class AudioEngine {
       }
       this.musicStep++;
     }, 1600);
+  }
+
+  /** Silences everything while the page is out of sight. */
+  suspend(): void {
+    if (this.ctx?.state !== 'running') return;
+    this.setFlight(0);
+    this.ctx.suspend().catch(() => undefined);
+  }
+
+  /** Picks up again after `suspend`. Browsers allow this without a gesture once unlocked. */
+  resume(): void {
+    if (this.ctx?.state !== 'suspended' || this.failed) return;
+    this.ctx.resume().catch(() => undefined);
   }
 
   stopMusic(): void {
