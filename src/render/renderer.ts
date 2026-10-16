@@ -334,14 +334,24 @@ export class Renderer {
     ctx.fill();
     ctx.restore();
 
+    // The distance sits inward of the arrow, on a chip of its own: on the
+    // edge of the screen it can land over anything, a sun included.
     ctx.save();
-    ctx.fillStyle = palette.textDim;
+    const label = `${distance}m`;
     ctx.font = '600 11px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // Keep the label inside the viewport when the arrow hugs an edge.
-    const labelY = clamp(y + 30, 14, this.height - 14);
-    ctx.fillText(`${distance}m`, clamp(x, 22, this.width - 22), labelY);
+    const chipW = ctx.measureText(label).width + 12;
+    const lx = clamp(x - dir.x * 40, chipW / 2 + 4, this.width - chipW / 2 - 4);
+    const ly = clamp(y - dir.y * 34, 12, this.height - 12);
+    ctx.fillStyle = palette.panel;
+    ctx.beginPath();
+    // Older browsers lack roundRect; a plain chip reads the same.
+    if (ctx.roundRect) ctx.roundRect(lx - chipW / 2, ly - 9, chipW, 18, 9);
+    else ctx.rect(lx - chipW / 2, ly - 9, chipW, 18);
+    ctx.fill();
+    ctx.fillStyle = palette.textDim;
+    ctx.fillText(label, lx, ly);
     ctx.restore();
   }
 
@@ -360,7 +370,9 @@ export class Renderer {
     if (length < 1e-6) return;
     const r = 26;
     const x = 16 + r;
-    const y = this.height - 16 - r - (this.width < 600 ? 64 : 8);
+    // On a phone the bottom belongs to the tip card; tuck the dial under the
+    // hole's name instead.
+    const y = this.width < 600 ? 122 : this.height - 24 - r;
     const angle = Math.atan2(now.y, now.x);
     const spin = world.gravitySpin!;
     const ahead = angle + spin.speed * 3;
