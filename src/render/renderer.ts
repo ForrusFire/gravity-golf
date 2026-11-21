@@ -51,6 +51,8 @@ export interface Scene {
   world: World;
   ballPosition: Vec2;
   ballRadius: number;
+  /** How far the ball has shrunk dropping into the cup, 1 when it has not. */
+  ballShrink?: number;
   ballVisible: boolean;
   /** Recent ball positions, oldest first. */
   trail: Vec2[];
@@ -238,7 +240,11 @@ export class Renderer {
 
     if (scene.ballVisible) {
       // Never smaller than a few pixels across, however far the view pulls back.
-      const ballDrawn = Math.max(scene.ballRadius, 3.4 / Math.max(this.camera.zoom, 0.05));
+      // The floor shrinks with the ball, so the drop into the cup still reads.
+      const ballDrawn = Math.max(
+        scene.ballRadius,
+        (3.4 / Math.max(this.camera.zoom, 0.05)) * (scene.ballShrink ?? 1),
+      );
       this.drawTrail(ctx, scene.trail, scene.ballRadius, scene.skin.trail, scene.skin.rainbow ? scene.time : null);
       if (scene.ballReady && !scene.aim && !options.reducedMotion) {
         this.drawBeacon(ctx, scene.ballPosition, scene.ballRadius, scene.time, scene.skin);

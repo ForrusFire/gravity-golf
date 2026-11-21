@@ -31,7 +31,14 @@ export const resolveChromium = (): string | undefined => {
     .concat(entries.filter((name) => name.startsWith('chromium_headless_shell-')));
 
   for (const dir of candidates) {
-    for (const binary of ['chrome-linux/chrome', 'chrome-linux/headless_shell']) {
+    // The folder name varies by image: chrome-linux on older ones,
+    // chrome-linux64 (and chrome-headless-shell-linux64) on newer.
+    for (const binary of [
+      'chrome-linux/chrome',
+      'chrome-linux64/chrome',
+      'chrome-linux/headless_shell',
+      'chrome-headless-shell-linux64/chrome-headless-shell',
+    ]) {
       const full = join(root, dir, binary);
       if (existsSync(full)) return full;
     }

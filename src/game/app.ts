@@ -26,7 +26,7 @@ import {
   titleScreen,
 } from '../ui/screens';
 import { gravityAt, holePositionAt } from '../physics/world';
-import { bodyShapeAt, closestSurfacePoint } from '../physics/geometry';
+import { bodyShapeAt, closestSurfacePoint, type Aabb } from '../physics/geometry';
 import { BALL_RADIUS, compileLevel, type LevelDef } from './level';
 import { ALL_LEVELS, CHAPTERS, nextLevel } from './levels';
 import { dailyId, dailySeed, dailyStreak } from './generator';
@@ -80,7 +80,7 @@ const CAMPAIGN_IDS = ALL_LEVELS.map((level) => level.id);
 /** The ball stops being a legible object below roughly this scale. */
 const MIN_ZOOM = 0.55;
 /** How far the view may pull back while aiming to show the cup. */
-const AIM_MIN_ZOOM = 0.3;
+const AIM_MIN_ZOOM = 0.22;
 /** Seconds of flight before a long shot starts to play faster. */
 const FAST_AFTER = 6;
 /** The most a long shot is sped up. */
@@ -122,6 +122,10 @@ export class GameApp {
   private cameraOffset: Vec2 = V.ZERO;
   private manualZoom = 1;
   private baseZoom = 1;
+  /** The zoom the last aim was framed at, held through the shot. */
+  private aimZoom = 1;
+  /** Where the cup goes over its motion, per session, for framing. */
+  private cupRegionCache: { session: PlaySession; region: Aabb } | null = null;
 
   private lastFrameTime = 0;
   private rafHandle = 0;
@@ -524,33 +528,72 @@ export class GameApp {
       // While aiming, both the ball and the cup should be in view: a gravity
       // shot cannot be planned at an arrow. On a phone in portrait the
       // whole-hole zoom floors out well short of that, so pull back further
-      // while the ball waits — never closer than the usual view.
-      const cup = holePositionAt(session.world);
-      const margin = 110;
-      const span = V.sub(cup, focus);
-      const both = Math.min(
-        camera.viewportWidth / (Math.abs(span.x) + margin * 2),
-        camera.viewportHeight / (Math.abs(span.y) + margin * 2),
+      // while the ball waits — never closer than the usual view. The HUD and
+      // the tip card take their share of the screen, so frame inside them.
+      const narrow = camera.viewportWidth < 600;
+      const inset = { left: 40, right: 40, top: narrow ? 140 : 90, bottom: narrow ? 110 : 80 };
+      const usableW = Math.max(80, camera.viewportWidth - inset.left - inset.right);
+      const usableH = Math.max(80, camera.viewportHeight - inset.top - inset.bottom);
+      // A moving cup is framed by everywhere it goes, so the view holds
+      // still rather than breathing with it.
+      const cup = this.cupRegion(session);
+      const region = {
+        minX: Math.min(focus.x, cup.minX),
+        maxX: Math.max(focus.x, cup.maxX),
+        minY: Math.min(focus.y, cup.minY),
+        maxY: Math.max(focus.y, cup.maxY),
+      };
+      const fit = Math.min(
+        usableW / Math.max(region.maxX - region.minX, 1),
+        usableH / Math.max(region.maxY - region.minY, 1),
       );
-      camera.targetZoom = Math.min(this.baseZoom, Math.max(both, AIM_MIN_ZOOM)) * this.manualZoom;
+      this.aimZoom = Math.min(this.baseZoom, Math.max(fit, AIM_MIN_ZOOM));
+      const zoom = this.aimZoom * this.manualZoom;
+      camera.targetZoom = zoom;
 
-      // And lean toward the cup. Capped by the viewport so the ball never
-      // slides off; each axis by its own side of the screen.
-      const lead = V.mul(span, 0.46);
-      const zoom = Math.max(camera.zoom, 0.01);
-      const maxX = (camera.viewportWidth / zoom) * 0.38;
-      const maxY = (camera.viewportHeight / zoom) * 0.38;
-      focus = V.add(focus, { x: clamp(lead.x, -maxX, maxX), y: clamp(lead.y, -maxY, maxY) });
+      // Centre the region in the usable part of the screen, but never so far
+      // that the ball itself leaves it.
+      const centre = {
+        x: (region.minX + region.maxX) / 2 - (inset.left - inset.right) / 2 / zoom,
+        y: (region.minY + region.maxY) / 2 - (inset.top - inset.bottom) / 2 / zoom,
+      };
+      const halfW = camera.viewportWidth / 2;
+      const halfH = camera.viewportHeight / 2;
+      focus = {
+        x: clamp(centre.x, focus.x - (halfW - inset.right) / zoom, focus.x + (halfW - inset.left) / zoom),
+        y: clamp(centre.y, focus.y - (halfH - inset.bottom) / zoom, focus.y + (halfH - inset.top) / zoom),
+      };
     }
     camera.target = V.add(focus, this.cameraOffset);
 
-    // While the ball is flying, ease out so more of the field is visible.
+    // In flight, hold the view the shot was aimed in — snapping closer at the
+    // moment of the strike would throw the cup back off-screen — and ease out
+    // a little more with speed.
     if (session.state === 'flying') {
       const speed = V.length(session.ball.velocity);
       const zoomOut = clamp(1 - speed / 2600, 0.82, 1);
-      camera.targetZoom *= zoomOut;
+      camera.targetZoom = this.aimZoom * this.manualZoom * zoomOut;
     }
     if (!settings.screenShake) camera.clearShake();
+  }
+
+  /** The box a moving cup sweeps over its cycle; a point for a still one. */
+  private cupRegion(session: PlaySession): Aabb {
+    if (this.cupRegionCache?.session === session) return this.cupRegionCache.region;
+    const world = session.world;
+    const at = holePositionAt(world, 0);
+    const region = { minX: at.x, maxX: at.x, minY: at.y, maxY: at.y };
+    if (world.hole.motion) {
+      for (let t = 0; t <= 30; t += 0.25) {
+        const p = holePositionAt(world, t);
+        region.minX = Math.min(region.minX, p.x);
+        region.maxX = Math.max(region.maxX, p.x);
+        region.minY = Math.min(region.minY, p.y);
+        region.maxY = Math.max(region.maxY, p.y);
+      }
+    }
+    this.cupRegionCache = { session, region };
+    return region;
   }
 
   private updateAim(): void {
@@ -953,6 +996,7 @@ export class GameApp {
     // shrink the ball to a few pixels, so the zoom floors out and the camera
     // pans with the ball instead.
     this.baseZoom = clamp(this.renderer.camera.fit(session.world.bounds, 60, 1.4), MIN_ZOOM, 1.4);
+    this.aimZoom = this.baseZoom;
     this.renderer.camera.limits = session.world.bounds;
   }
 
@@ -1795,16 +1839,19 @@ export class GameApp {
     // A sunk ball drops into the cup rather than sitting on top of it.
     let ballPosition = session.ball.position;
     let ballRadius = session.ball.radius;
+    let ballShrink = 1;
     if (session.state === 'sunk') {
       const t = clamp((performance.now() - this.sinkStart) / 380, 0, 1);
       const ease = 1 - (1 - t) * (1 - t);
       ballPosition = V.lerpVec(ballPosition, holePositionAt(session.world), ease);
-      ballRadius *= 1 - 0.8 * ease;
+      ballShrink = 1 - 0.8 * ease;
+      ballRadius *= ballShrink;
     }
     const scene: Scene = {
       world: session.world,
       ballPosition,
       ballRadius,
+      ballShrink,
       ballVisible: session.state !== 'respawning',
       trail: this.trail,
       aim: this.screen === 'play' ? this.aimState : null,

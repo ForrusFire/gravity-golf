@@ -305,7 +305,9 @@ export class InputController {
 
   private onPointerUp(event: PointerEvent): void {
     this.touches.delete(event.pointerId);
-    if (this.touches.size < 2) this.pinchDistance = 0;
+    // With two or more still down the pair being measured may have changed;
+    // start the pinch afresh from them, or the next move jumps the zoom.
+    this.pinchDistance = this.touches.size < 2 ? 0 : this.currentPinchDistance();
 
     if (this.panPointerId === event.pointerId) {
       this.panPointerId = null;
@@ -329,6 +331,7 @@ export class InputController {
 
   private onPointerCancel(event: PointerEvent): void {
     this.touches.delete(event.pointerId);
+    this.pinchDistance = this.touches.size < 2 ? 0 : this.currentPinchDistance();
     if (this.panPointerId === event.pointerId) this.panPointerId = null;
     if (this.dragPointerId === event.pointerId) {
       this.dragging = false;

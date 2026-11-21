@@ -103,8 +103,8 @@ export class HoleEditor {
   /** Fingers on the canvas, in screen space, for pinch-zoom. */
   private touches = new Map<number, Vec2>();
   private pinch: { distance: number; center: Vec2 } | null = null;
-  /** How much history there was when the current press began. */
-  private historyAtDown = 0;
+  /** Undo steps the current press has made, so a pinch can take them back. */
+  private checkpointsThisPress = 0;
   private attached = false;
   /** Earlier versions of the hole, newest last, for undo. */
   private history: CustomHole[] = [];
@@ -361,8 +361,12 @@ export class HoleEditor {
       this.capture(this.pointerId, false);
       this.pointerId = null;
       // The first finger may already have placed or moved something.
-      if (this.history.length > this.historyAtDown) {
-        this.hole = this.history.pop()!;
+      // Counted rather than measured: at the history cap, a checkpoint
+      // drops the oldest entry and the length does not change.
+      const made = Math.min(this.checkpointsThisPress, this.history.length);
+      if (made > 0) {
+        this.hole = this.history.splice(this.history.length - made, made)[0]!;
+        this.checkpointsThisPress = 0;
         this.changed();
         this.undoButton.disabled = this.history.length === 0;
       }
@@ -396,7 +400,7 @@ export class HoleEditor {
       if (this.touches.size > 2 || this.pinch) return;
     }
     if (event.button !== 0 || this.pointerId !== null) return;
-    this.historyAtDown = this.history.length;
+    this.checkpointsThisPress = 0;
     const p = this.worldPoint(event);
     this.pointerId = event.pointerId;
     this.capture(event.pointerId, true);
@@ -541,7 +545,9 @@ export class HoleEditor {
   }
 
   private onCancel = (event: PointerEvent): void => {
-    this.liftTouch(event);
+    // Losing capture is not lifting a finger: a pinch lets go of the first
+    // finger's capture while it is still on the glass.
+    if (event.type !== 'lostpointercapture') this.liftTouch(event);
     if (event.pointerId !== this.pointerId) return;
     this.pointerId = null;
     this.pending = null;
@@ -602,6 +608,7 @@ export class HoleEditor {
   private checkpoint(): void {
     this.history.push(structuredClone(this.hole));
     if (this.history.length > 80) this.history.shift();
+    this.checkpointsThisPress++;
     this.undoButton.disabled = false;
   }
 
