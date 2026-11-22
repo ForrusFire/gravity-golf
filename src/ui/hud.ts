@@ -130,8 +130,11 @@ export class Hud {
     this.hintButton.classList.toggle('btn--busy', busy);
   }
 
-  setLevel(level: LevelDef, showHint: boolean, kicker = ''): void {
+  setLevel(level: LevelDef, showHint: boolean, kicker = '', status = ''): void {
     this.levelName.textContent = level.name;
+    // A message about the last hole means nothing on this one.
+    this.toast.classList.remove('hud__toast--visible');
+    this.toastTimer = 0;
     // The title card: the hole announced, then out of the way.
     this.introKicker.textContent = kicker;
     this.introName.textContent = level.name;
@@ -139,7 +142,7 @@ export class Hud {
     this.intro.classList.remove('hud__intro--show');
     void this.intro.offsetWidth;
     this.intro.classList.add('hud__intro--show');
-    this.parLabel.textContent = `Par ${level.par}`;
+    this.parLabel.textContent = status ? `Par ${level.par} · ${status}` : `Par ${level.par}`;
     clear(this.hint);
     if (showHint && level.hint) {
       this.hint.textContent = level.hint;

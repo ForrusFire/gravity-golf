@@ -185,6 +185,32 @@ export const isLevelUnlocked = (
   return previous ? progress.isCompleted(previous.id) : false;
 };
 
+/**
+ * Whether a hole can be played: its chapter's star gate is met *and* the hole
+ * before it is done. Every screen that offers a hole — Continue, Next hole,
+ * the level grid, the "chapter open" banner — asks this one question, so they
+ * cannot disagree.
+ */
+export const isLevelPlayable = (
+  level: LevelDef,
+  chapters: readonly Chapter[],
+  ordered: LevelDef[],
+  progress: ProgressStore,
+): boolean => {
+  const chapter = chapters.find((c) => c.levels.includes(level));
+  const stars = progress.totalStars(ordered.map((l) => l.id));
+  if (chapter && stars < chapter.starsRequired) return false;
+  return isLevelUnlocked(ordered.indexOf(level), ordered, progress);
+};
+
+/** Chapters whose first hole is playable — "open" in the sense a player means. */
+export const openChapters = (
+  chapters: readonly Chapter[],
+  ordered: LevelDef[],
+  progress: ProgressStore,
+): Chapter[] =>
+  chapters.filter((c) => c.levels[0] && isLevelPlayable(c.levels[0], chapters, ordered, progress));
+
 const levelMap = (level: LevelDef, className = 'level-card__map'): HTMLCanvasElement => {
   const canvas = el('canvas', { class: className, attrs: { 'aria-hidden': 'true' } });
   drawThumbnail(canvas, level);
@@ -313,6 +339,18 @@ export interface ResultsCallbacks {
   totalStars?: number;
   /** The hole and which of its stars were picked up, to map the missed ones. */
   starMap?: { level: LevelDef; collected: boolean[] };
+  /** Why there is no next hole yet, e.g. a chapter still waiting on stars. */
+  gateNote?: string;
+  /** Set when this hole finished its chapter: the chapter's name and stars. */
+  chapterDone?: { name: string; stars: number; total: number };
+  /** A ball this result's stars unlocked, with a one-tap way to wear it. */
+  newSkin?: { name: string; onEquip: () => void };
+  /** Another hole of the same kind — a fresh random hole. */
+  onAnother?: { label: string; run: () => void };
+  /** Back to the title, for holes started from it rather than from the list. */
+  onTitle?: () => void;
+  /** Days in a row the daily hole has been finished, today included. */
+  dailyStreak?: number;
 }
 
 export const resultsScreen = (
@@ -329,6 +367,36 @@ export const resultsScreen = (
       ? el('p', {
           class: 'results__unlocked',
           text: `New chapter open: ${callbacks.unlocked.join(', ')}`,
+        })
+      : null,
+    callbacks.chapterDone
+      ? el('p', {
+          class: 'results__chapter',
+          text: `Chapter complete: ${callbacks.chapterDone.name} · ${callbacks.chapterDone.stars}/${callbacks.chapterDone.total} ★`,
+        })
+      : null,
+    callbacks.newSkin
+      ? el('div', { class: 'results__skin' }, [
+          el('span', { text: `New ball unlocked: ${callbacks.newSkin.name}` }),
+          (() => {
+            const skin = callbacks.newSkin;
+            const b = button('Wear it', () => {
+              skin.onEquip();
+              b.textContent = 'Wearing it ✓';
+              b.disabled = true;
+            });
+            b.classList.add('btn--small');
+            return b;
+          })(),
+        ])
+      : null,
+    (callbacks.dailyStreak ?? 0) >= 1
+      ? el('p', {
+          class: 'results__streak',
+          text:
+            callbacks.dailyStreak === 1
+              ? '📅 Daily done — come back tomorrow to start a streak'
+              : `🔥 ${callbacks.dailyStreak}-day daily streak`,
         })
       : null,
     (callbacks.streak ?? 0) >= 2
@@ -389,10 +457,13 @@ export const resultsScreen = (
     callbacks.previousBest !== null
       ? el('p', { class: 'results__previous', text: `Previous best: ${callbacks.previousBest}` })
       : null,
+    callbacks.gateNote ? el('p', { class: 'results__gate', text: callbacks.gateNote }) : null,
     el('div', { class: 'results__buttons' }, [
       callbacks.hasNext
         ? button('Next hole', callbacks.onNext, { class: 'btn--primary' })
-        : button(callbacks.levelsLabel ?? 'Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
+        : callbacks.onAnother
+          ? button(callbacks.onAnother.label, callbacks.onAnother.run, { class: 'btn--primary' })
+          : button(callbacks.levelsLabel ?? 'Back to holes', callbacks.onLevels, { class: 'btn--primary' }),
       el('div', { class: 'results__row' }, [
         button(
           result.stars < (callbacks.totalStars ?? 3) ? 'Retry for stars' : 'Retry',
@@ -404,6 +475,7 @@ export const resultsScreen = (
         ? button('Share this hole', callbacks.onShare, { class: 'btn--ghost' })
         : null,
       callbacks.hasNext ? button('All holes', callbacks.onLevels, { class: 'btn--ghost' }) : null,
+      callbacks.onTitle ? button('Main menu', callbacks.onTitle, { class: 'btn--ghost' }) : null,
     ]),
   ]);
 

@@ -192,7 +192,9 @@ export const applyResult = (data: ProgressData, result: HoleResult): ProgressDat
   const record: LevelRecord = previous
     ? {
         bestStrokes: Math.min(previous.bestStrokes, result.strokes),
-        bestShots: improved ? result.shots : previous.bestShots,
+        // A hinted run records no shots: it must not wipe the ghost of an
+        // honest one, which may be the only replay the hole will ever have.
+        bestShots: improved && result.shots.length > 0 ? result.shots : previous.bestShots,
         bestStars: Math.max(previous.bestStars, result.stars),
         bestMedal: betterMedal(previous.bestMedal, result.medal),
         bestTime: Math.min(previous.bestTime, result.time),

@@ -581,6 +581,35 @@ test.describe('resilience', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Continue never opens a chapter still waiting on stars', async ({ page }) => {
+    await page.goto('/');
+    // Chapters 1 and 2 done but only 4 stars: chapter 3 needs 6.
+    await page.evaluate(() => {
+      const levels: Record<string, unknown> = {};
+      ['c1-1', 'c1-2', 'c1-3', 'c1-4', 'c1-5', 'c1-6', 'c2-1', 'c2-2', 'c2-3', 'c2-4', 'c2-5', 'c2-6'].forEach(
+        (id, i) =>
+          (levels[id] = {
+            bestStrokes: 3,
+            bestShots: [],
+            bestStars: i < 4 ? 1 : 0,
+            bestMedal: 'bronze',
+            bestTime: 10,
+            completed: true,
+            attempts: 1,
+          }),
+      );
+      localStorage.setItem('gravity-golf/progress', JSON.stringify({ version: 1, levels }));
+    });
+    await page.reload();
+    const play = page.getByRole('button', { name: /Continue/ });
+    await expect(play).toContainText('Stars to find');
+    await play.click();
+    const level = await page.evaluate(
+      () => (window.gravityGolf as unknown as { session: { level: { id: string } } }).session.level.id,
+    );
+    expect(level.startsWith('c3')).toBe(false);
+  });
+
   test('survives a window resize mid-play', async ({ page }) => {
     await startGame(page);
     await page.setViewportSize({ width: 600, height: 900 });

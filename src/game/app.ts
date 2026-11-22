@@ -4,7 +4,7 @@ import * as V from '../core/vec2';
 import type { Vec2 } from '../core/vec2';
 import { HIGH_CONTRAST_PALETTE, SPACE_PALETTE } from '../render/palette';
 import { Renderer, type AimState, type RenderOptions, type Scene } from '../render/renderer';
-import { el } from '../ui/dom';
+import { el, formatToPar } from '../ui/dom';
 import { Hud } from '../ui/hud';
 import { InputController } from '../ui/input';
 import {
@@ -12,7 +12,8 @@ import {
   campaignCompleteScreen,
   type CampaignSummary,
   helpScreen,
-  isLevelUnlocked,
+  isLevelPlayable,
+  openChapters,
   buildScorecard,
   loadingScreen,
   levelSelectScreen,
@@ -43,6 +44,7 @@ import {
   dailyRoundSeed,
   randomRoundSeed,
   roundFinished,
+  roundPar,
   roundStrokes,
   type RoundState,
 } from './round';
@@ -60,7 +62,7 @@ import { launchConfetti } from '../ui/confetti';
 import { HoleEditor } from '../ui/editor';
 import { customToLevel, decodeCustomHole, encodeCustomHole, type CustomHole } from './custom';
 import { createShowcase, type Showcase } from './showcase';
-import { resolveSkin } from './skins';
+import { BALL_SKINS, resolveSkin } from './skins';
 
 type AppScreen =
   | 'title'
@@ -221,6 +223,7 @@ export class GameApp {
     );
 
     this.applyAudioSettings();
+    this.applyDocumentSettings();
     this.bindGlobalKeys();
     this.handleResize();
     window.addEventListener('resize', this.handleResize);
@@ -537,16 +540,35 @@ export class GameApp {
       // A moving cup is framed by everywhere it goes, so the view holds
       // still rather than breathing with it.
       const cup = this.cupRegion(session);
-      const region = {
+      let region = {
         minX: Math.min(focus.x, cup.minX),
         maxX: Math.max(focus.x, cup.maxX),
         minY: Math.min(focus.y, cup.minY),
         maxY: Math.max(focus.y, cup.maxY),
       };
-      const fit = Math.min(
-        usableW / Math.max(region.maxX - region.minX, 1),
-        usableH / Math.max(region.maxY - region.minY, 1),
-      );
+      const fitOf = (box: Aabb): number =>
+        Math.min(
+          usableW / Math.max(box.maxX - box.minX, 1),
+          usableH / Math.max(box.maxY - box.minY, 1),
+        );
+      let fit = fitOf(region);
+      // The stars still out there too, when taking them in costs little: a
+      // star cut off by the screen edge is a star nobody plans a line for.
+      const stars = session.world.collectibles.filter((c) => !c.collected);
+      if (stars.length > 0) {
+        const pad = 26;
+        const withStars = {
+          minX: Math.min(region.minX, ...stars.map((c) => c.position.x - pad)),
+          maxX: Math.max(region.maxX, ...stars.map((c) => c.position.x + pad)),
+          minY: Math.min(region.minY, ...stars.map((c) => c.position.y - pad)),
+          maxY: Math.max(region.maxY, ...stars.map((c) => c.position.y + pad)),
+        };
+        const fitStars = fitOf(withStars);
+        if (fitStars >= fit * 0.7) {
+          region = withStars;
+          fit = fitStars;
+        }
+      }
       this.aimZoom = Math.min(this.baseZoom, Math.max(fit, AIM_MIN_ZOOM));
       const zoom = this.aimZoom * this.manualZoom;
       camera.targetZoom = zoom;
@@ -831,6 +853,16 @@ export class GameApp {
     this.handleSessionEvents(session.shoot(direction, power));
   }
 
+  /** The round so far, against par for the holes played: "Round 4/9 · −2". */
+  private roundStatus(): string {
+    const round = this.round;
+    if (!round) return '';
+    const played = round.index;
+    const where = `Round ${played + 1}/${round.holes.length}`;
+    if (played === 0) return where;
+    return `${where} · ${formatToPar(roundStrokes(round), roundPar(round))}`;
+  }
+
   /** The line above a hole's name on its title card. */
   private introKicker(level: LevelDef): string {
     if (this.round) return `Round · hole ${this.round.index + 1} of ${this.round.holes.length}`;
@@ -857,7 +889,7 @@ export class GameApp {
       level.id === CAMPAIGN_IDS[0] && this.progress.settings.aimMode === 'direct'
         ? { ...level, hint: 'Drag anywhere toward where you want to go, and let go to putt.' }
         : level;
-    this.hud.setLevel(shown, !this.hintShownFor.has(level.id), this.introKicker(level));
+    this.hud.setLevel(shown, !this.hintShownFor.has(level.id), this.introKicker(level), this.roundStatus());
     this.hintShownFor.add(level.id);
     this.hud.sync(this.session);
 
@@ -1020,16 +1052,47 @@ export class GameApp {
     // unfinished hole is completed, which need not be the last hole in order.
     const wasComplete = this.campaignComplete();
     const starsBefore = this.progress.totalStars(CAMPAIGN_IDS);
+    const openBefore = new Set(openChapters(CHAPTERS, ALL_LEVELS, this.progress));
     // A round is its own score: its holes do not touch the campaign's records,
     // so a round cannot unlock locked holes, bank stars or swap ghosts.
     if (!this.round && result.levelId !== 'custom') this.progress.submit(result);
     const justFinished = !wasComplete && this.campaignComplete();
-    // Chapters open on stars; say so when this result opened one.
+    // A chapter is open once its first hole can be played: the star gate met
+    // and the chapter before it finished. Said when this result opened one.
     const starsAfter = this.progress.totalStars(CAMPAIGN_IDS);
-    const unlocked = CHAPTERS.filter(
-      (c) => c.starsRequired > starsBefore && c.starsRequired <= starsAfter,
-    ).map((c) => `${c.index + 1}. ${c.name}`);
-    const upcoming = nextLevel(result.levelId);
+    const unlocked = openChapters(CHAPTERS, ALL_LEVELS, this.progress)
+      .filter((c) => !openBefore.has(c))
+      .map((c) => `${c.index + 1}. ${c.name}`);
+    const following = nextLevel(result.levelId);
+    const upcoming =
+      following && isLevelPlayable(following, CHAPTERS, ALL_LEVELS, this.progress)
+        ? following
+        : undefined;
+    const gateChapter = following && !upcoming ? CHAPTERS.find((c) => c.levels.includes(following)) : undefined;
+    const gateNote =
+      gateChapter && starsAfter < gateChapter.starsRequired
+        ? `Chapter ${gateChapter.index + 1} opens at ${gateChapter.starsRequired} ★ — ${
+            gateChapter.starsRequired - starsAfter
+          } more to find. Replay holes for the stars you missed.`
+        : undefined;
+    // The hole that finishes a chapter earns a line of its own.
+    const doneChapter = CHAPTERS.find((c) => c.levels.some((l) => l.id === result.levelId));
+    const chapterDone =
+      !this.round &&
+      doneChapter &&
+      doneChapter.levels.every((l) => this.progress.isCompleted(l.id)) &&
+      doneChapter.levels.some((l) => l.id === result.levelId && !previous?.completed)
+        ? {
+            name: `${doneChapter.index + 1}. ${doneChapter.name}`,
+            stars: this.progress.totalStars(doneChapter.levels.map((l) => l.id)),
+            total: doneChapter.levels.length * 3,
+          }
+        : undefined;
+    const skin = BALL_SKINS.filter(
+      (k) => k.starsRequired > starsBefore && k.starsRequired <= starsAfter,
+    ).at(-1);
+    const isGenerated = result.levelId.startsWith('gen-');
+    const isDaily = result.levelId.startsWith('daily');
 
     // A beat of celebration before the panel covers the screen.
     window.setTimeout(() => {
@@ -1072,6 +1135,23 @@ export class GameApp {
             previousBest,
             streak,
             unlocked,
+            gateNote,
+            chapterDone,
+            newSkin: skin
+              ? {
+                  name: skin.name,
+                  onEquip: () => {
+                    this.applySettings({ ballSkin: skin.id });
+                  },
+                }
+              : undefined,
+            onAnother: isGenerated
+              ? { label: 'Another random hole', run: () => void this.playRandom() }
+              : undefined,
+            onTitle: isGenerated || isDaily ? () => this.showTitle() : undefined,
+            dailyStreak: isDaily
+              ? dailyStreak((id) => this.progress.isCompleted(id), new Date())
+              : undefined,
             totalStars: session.totalStars,
             starMap: {
               level: session.level,
@@ -1538,24 +1618,29 @@ export class GameApp {
     }
   }
 
-  /** The first unlocked hole not yet finished — where Continue picks up. */
-  private nextUnfinished(): LevelDef {
-    return (
-      ALL_LEVELS.find(
-        (level, index) =>
-          !this.progress.isCompleted(level.id) &&
-          isLevelUnlocked(index, ALL_LEVELS, this.progress),
-      ) ?? ALL_LEVELS[0]!
+  /**
+   * Where Continue picks up: the first playable hole not yet finished. When
+   * the next chapter is still waiting on stars — or every hole is done — it
+   * is the first playable hole with stars left to find instead.
+   */
+  private nextUnfinished(): { level: LevelDef; hunt: boolean } {
+    const playable = ALL_LEVELS.filter((level) =>
+      isLevelPlayable(level, CHAPTERS, ALL_LEVELS, this.progress),
     );
+    const unfinished = playable.find((level) => !this.progress.isCompleted(level.id));
+    if (unfinished) return { level: unfinished, hunt: false };
+    const starsLeft = playable.find((level) => this.progress.starsFor(level.id) < 3);
+    if (starsLeft) return { level: starsLeft, hunt: true };
+    return { level: ALL_LEVELS[0]!, hunt: false };
   }
 
   private continueLabel(): string {
-    const next = this.nextUnfinished();
-    return `Hole ${CAMPAIGN_IDS.indexOf(next.id) + 1} · ${next.name}`;
+    const { level, hunt } = this.nextUnfinished();
+    return `${hunt ? 'Stars to find · ' : ''}Hole ${CAMPAIGN_IDS.indexOf(level.id) + 1} · ${level.name}`;
   }
 
   private playNextUnfinished(): void {
-    this.playLevel(this.nextUnfinished());
+    this.playLevel(this.nextUnfinished().level);
   }
 
   showLevels(): void {
@@ -1659,15 +1744,22 @@ export class GameApp {
     this.progress.reset();
     this.hintShownFor.clear();
     this.applyAudioSettings();
+    this.applyDocumentSettings();
     this.showTitle();
   }
 
   private applySettings(patch: Partial<Settings>): void {
     const settings = this.progress.updateSettings(patch);
     this.input.config.aimMode = settings.aimMode;
+    this.applyDocumentSettings();
     this.applyAudioSettings();
     this.previewCache = null;
     this.clearHintLine();
+  }
+
+  /** Settings the HTML side reads: menus and overlays animate in CSS. */
+  private applyDocumentSettings(): void {
+    document.documentElement.classList.toggle('reduce-motion', this.progress.settings.reducedMotion);
   }
 
   private applyAudioSettings(): void {

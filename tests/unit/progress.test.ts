@@ -177,6 +177,14 @@ describe('applyResult', () => {
     });
   });
 
+  it('keeps the honest ghost when a hinted run sets the best score', () => {
+    const shots = [{ angle: 0, power: 0.5 }];
+    let data = applyResult(emptyProgress(), result({ strokes: 2, shots }));
+    data = applyResult(data, result({ strokes: 1, shots: [], hinted: true }));
+    expect(data.levels['c1-1']!.bestStrokes).toBe(1);
+    expect(data.levels['c1-1']!.bestShots).toEqual(shots);
+  });
+
   it('accumulates lifetime totals', () => {
     let data = applyResult(emptyProgress(), result({ strokes: 3, time: 10 }));
     data = applyResult(data, result({ levelId: 'c1-2', strokes: 5, time: 20 }));

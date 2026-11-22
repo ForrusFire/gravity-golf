@@ -456,7 +456,7 @@ body.loading::after {
 
 .overlay--showcase .panel {
   width: min(24rem, 100%);
-  background: linear-gradient(180deg, rgba(20, 26, 56, 0.62), rgba(8, 10, 26, 0.72));
+  background: linear-gradient(180deg, rgba(20, 26, 56, 0.86), rgba(8, 10, 26, 0.92));
   backdrop-filter: blur(14px) saturate(1.3);
   -webkit-backdrop-filter: blur(14px) saturate(1.3);
   border-color: rgba(150, 180, 255, 0.22);
@@ -1098,6 +1098,32 @@ body.loading::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* A plain fade, not motion: cut to nothing it would never be read. */
+  .hud__intro--show {
+    animation: intro-fade 2.2s linear forwards !important;
+  }
+}
+
+/* The in-game Reduced motion setting, for players whose system does not ask. */
+:root.reduce-motion * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+:root.reduce-motion .hud__intro--show {
+  animation: intro-fade 2.2s linear forwards !important;
+}
+
+@keyframes intro-fade {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ---------------------------------------------------------------- scorecard */
@@ -1701,4 +1727,46 @@ body.loading::after {
   width: var(--fill);
   background: linear-gradient(90deg, #ffb35a, #ffd25a);
   border-radius: inherit;
+}
+
+.results__chapter {
+  margin: 0.2rem auto 0.6rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 210, 90, 0.2), rgba(255, 210, 90, 0.06));
+  border: 1px solid rgba(255, 210, 90, 0.5);
+  color: #ffd56a;
+  font-weight: 800;
+  font-size: 0.9rem;
+  animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.4s backwards;
+}
+
+.results__skin {
+  margin: 0.2rem auto 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.5rem 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(190, 140, 255, 0.14);
+  border: 1px solid rgba(190, 140, 255, 0.45);
+  color: #d9c2ff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  width: fit-content;
+  animation: star-land 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.6s backwards;
+}
+
+.btn.btn--small {
+  min-height: 0;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.results__gate {
+  margin: 0 auto 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
 }

@@ -192,6 +192,11 @@ export class Renderer {
         // A bridge waiting on a switch is drawn as an outline. Telegraphing
         // what will appear is the difference between a puzzle and a surprise.
         if (body.addedBy) this.drawPendingBody(ctx, shape, scene.time, options.palette);
+        // An opened gate leaves a faint violet trace: where it stood, and that
+        // it could close again on a timed pad.
+        if (body.removedBy) {
+          this.drawPendingBody(ctx, shape, scene.time, options.palette, options.palette.accentAlt);
+        }
         // The same for a pulsing body between beats — but it also gets a filling
         // ring showing how much of the gap is left, so the rhythm is something
         // to play to rather than something to be caught out by.
@@ -202,6 +207,7 @@ export class Renderer {
         continue;
       }
       this.drawBody(ctx, body, shape, options.palette, scene.world, scene.time);
+      if (body.removedBy) this.drawGate(ctx, body, shape, scene.world, scene.time, options.palette);
       if (body.pulse) {
         this.drawPulseClock(ctx, shape, pulsePhase(body.pulse, scene.world.time), true);
       }
@@ -1064,10 +1070,11 @@ export class Renderer {
     shape: Shape,
     time: number,
     palette: Palette,
+    color = palette.accent,
   ): void {
     ctx.save();
     ctx.globalAlpha = 0.3 + Math.sin(time * 2.6) * 0.1;
-    ctx.strokeStyle = palette.accent;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2 / this.camera.zoom;
     ctx.setLineDash([7 / this.camera.zoom, 6 / this.camera.zoom]);
     this.tracePath(ctx, shape);
@@ -1075,7 +1082,82 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** A switch pad, lit once thrown. */
+  /**
+   * A gate: machinery, so violet like the pads that open it, with hazard
+   * stripes and a lock showing how many of its pads are thrown. Without this
+   * it is just another wall, and nobody goes looking for the switch.
+   */
+  private drawGate(
+    ctx: CanvasRenderingContext2D,
+    body: Body,
+    shape: Shape,
+    world: World,
+    time: number,
+    palette: Palette,
+  ): void {
+    const ids = Array.isArray(body.removedBy) ? body.removedBy : [body.removedBy];
+    const pads = world.switches.filter((pad) => ids.includes(pad.id));
+    const on = pads.filter((pad) => pad.on).length;
+    const box = shapeBounds(shape);
+    const zoom = this.camera.zoom;
+    ctx.save();
+
+    // Stripes, clipped to the gate itself.
+    this.tracePath(ctx, shape);
+    ctx.clip();
+    ctx.strokeStyle = palette.accentAlt;
+    ctx.globalAlpha = 0.42;
+    ctx.lineWidth = 5;
+    const span = box.maxX - box.minX + box.maxY - box.minY;
+    const drift = (time * 10) % 16;
+    for (let d = -span; d < span; d += 16) {
+      ctx.beginPath();
+      ctx.moveTo(box.minX + d + drift, box.maxY);
+      ctx.lineTo(box.minX + d + drift + (box.maxY - box.minY), box.minY);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = palette.accentAlt;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2 / zoom;
+    this.tracePath(ctx, shape);
+    ctx.stroke();
+
+    // The lock, kept a readable size on screen however far the view is out.
+    if (pads.length > 0) {
+      const cx = (box.minX + box.maxX) / 2;
+      const cy = (box.minY + box.maxY) / 2;
+      const u = 1.25 / Math.max(zoom, 0.35);
+      const w = (pads.length > 1 ? 36 : 18) * u;
+      const h = 18 * u;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(24, 16, 44, 0.92)';
+      ctx.strokeStyle = palette.accentAlt;
+      ctx.lineWidth = 1.5 * u;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 5 * u);
+      else ctx.rect(cx - w / 2, cy - h / 2, w, h);
+      ctx.fill();
+      ctx.stroke();
+      // Padlock glyph.
+      const lx = pads.length > 1 ? cx - w / 2 + 9 * u : cx;
+      ctx.fillStyle = palette.accentAlt;
+      ctx.fillRect(lx - 4.5 * u, cy - 1 * u, 9 * u, 6.5 * u);
+      ctx.beginPath();
+      ctx.arc(lx, cy - 1 * u, 3 * u, Math.PI, 0);
+      ctx.stroke();
+      if (pads.length > 1) {
+        ctx.font = `800 ${11 * u}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${on}/${pads.length}`, cx + 7 * u, cy + 0.5 * u);
+      }
+    }
+    ctx.restore();
+  }
+
   /**
    * A boost ring. Lime and arrow-shaped: it is the only thing in the game that
    * *gives* the ball speed on a heading of its own choosing, so it gets a hue
