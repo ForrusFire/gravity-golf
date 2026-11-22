@@ -602,7 +602,7 @@ test.describe('resilience', () => {
     });
     await page.reload();
     const play = page.getByRole('button', { name: /Continue/ });
-    await expect(play).toContainText('Stars to find');
+    await expect(page.locator('.title')).toContainText('Stars to find');
     await play.click();
     const level = await page.evaluate(
       () => (window.gravityGolf as unknown as { session: { level: { id: string } } }).session.level.id,
